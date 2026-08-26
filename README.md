@@ -108,6 +108,7 @@ docker run -d \
 | :--- | :---: | :--- | :--- |
 | `TUNESHINE_HOST` | **Yes** | — | IP or hostname of your physical Tuneshine device (e.g. `192.168.1.100` or `tuneshine.local`) |
 | `PORT` | No | `8585` | Port for the Hub HTTP server |
+| `CLEAR_DELAY` | No | `2.0` | Debounce delay in seconds before clearing display or switching sources (prevents screen flicker during seeks & track transitions) |
 | `SPOTIFY_ENABLED` | No | `false` | Enable Spotify Web API polling |
 | `SPOTIFY_CLIENT_ID` | Conditional | — | Spotify Developer Client ID (required if Spotify is enabled) |
 | `SPOTIFY_CLIENT_SECRET` | Conditional | — | Spotify Developer Client Secret (required if Spotify is enabled) |

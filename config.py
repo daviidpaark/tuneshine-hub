@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     tuneshine_host: str = ""
     port: int = 8585
 
+    # Debounce / Clearing Configuration
+    clear_delay: float = 2.0
+
     # Spotify Configuration
     spotify_enabled: bool = False
     spotify_client_id: Optional[str] = ""

@@ -54,6 +54,16 @@
       <Mask>false</Mask>
     </Variable>
     <Variable>
+      <Value>2.0</Value>
+      <Name>CLEAR_DELAY</Name>
+      <Mode/>
+      <Description>Debounce delay in seconds before clearing display or switching active sources</Description>
+      <Type>Variable</Type>
+      <Display>advanced</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Variable>
+    <Variable>
       <Value>false</Value>
       <Name>SPOTIFY_ENABLED</Name>
       <Mode/>

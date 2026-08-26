@@ -39,9 +39,12 @@ class TestImageUtils(unittest.TestCase):
 
 class TestStateManager(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.mgr = HubStateManager("192.168.1.100")
+        self.mgr = HubStateManager("192.168.1.100", clear_delay=0.0)
         self.mgr._push_to_tuneshine = AsyncMock()
         self.mgr._clear_tuneshine = AsyncMock()
+
+    async def asyncTearDown(self):
+        await self.mgr.close()
 
     async def test_latest_event_arbitration(self):
         img = Image.new("RGB", (50, 50), color=(255, 0, 0))
@@ -71,6 +74,64 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.mgr.active_source)
         self.assertFalse(self.mgr.navidrome_state["is_playing"])
         self.mgr._clear_tuneshine.assert_called()
+
+    async def test_debounced_clear_cancellation(self):
+        # Test that rapid DELETE -> POST cancels the pending clear and avoids blank screen
+        mgr = HubStateManager("192.168.1.100", clear_delay=0.1)
+        mgr._push_to_tuneshine = AsyncMock()
+        mgr._clear_tuneshine = AsyncMock()
+
+        img = Image.new("RGB", (50, 50), color=(0, 255, 0))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        dummy_img = buf.getvalue()
+        meta1 = {"artistName": "Artist 1", "albumName": "Album 1", "serviceName": "Navidrome"}
+        meta2 = {"artistName": "Artist 2", "albumName": "Album 2", "serviceName": "Navidrome"}
+
+        # 1. Initial track playing
+        await mgr.on_external_playing(dummy_img, meta1)
+        self.assertEqual(mgr.active_source, "navidrome")
+
+        # 2. External stopped event arrives (e.g. Navidrome websocket disconnect or track change)
+        await mgr.on_external_stopped()
+        self.assertIsNotNone(mgr._pending_clear_task)
+
+        # 3. Next track arrives immediately (within debounce window)
+        await asyncio.sleep(0.02)
+        await mgr.on_external_playing(dummy_img, meta2)
+
+        # 4. Wait out the original debounce period
+        await asyncio.sleep(0.15)
+
+        # Clear should NEVER have been called on the physical device
+        mgr._clear_tuneshine.assert_not_called()
+        self.assertEqual(mgr.active_source, "navidrome")
+        await mgr.close()
+
+    async def test_debounced_clear_execution(self):
+        # Test that clear executes after debounce duration when no new track arrives
+        mgr = HubStateManager("192.168.1.100", clear_delay=0.05)
+        mgr._push_to_tuneshine = AsyncMock()
+        mgr._clear_tuneshine = AsyncMock()
+
+        img = Image.new("RGB", (50, 50), color=(0, 0, 255))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        dummy_img = buf.getvalue()
+        meta = {"artistName": "Artist 1", "albumName": "Album 1", "serviceName": "Navidrome"}
+
+        await mgr.on_external_playing(dummy_img, meta)
+        await mgr.on_external_stopped()
+
+        # Before delay completes, display has not cleared
+        self.assertFalse(mgr.navidrome_state["is_playing"])
+        mgr._clear_tuneshine.assert_not_called()
+
+        # After delay completes, clear is executed
+        await asyncio.sleep(0.08)
+        mgr._clear_tuneshine.assert_called_once()
+        self.assertIsNone(mgr.active_source)
+        await mgr.close()
 
 
 class TestSpotifyClient(unittest.IsolatedAsyncioTestCase):

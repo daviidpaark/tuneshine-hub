@@ -15,9 +15,13 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+# Silence verbose HTTP request logging from httpx/httpcore polling
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 logger = logging.getLogger("tuneshine-hub")
 
-state_mgr = HubStateManager(settings.clean_tuneshine_host)
+state_mgr = HubStateManager(settings.clean_tuneshine_host, clear_delay=settings.clear_delay)
 spotify_client = SpotifyClient(
     client_id=settings.spotify_client_id,
     client_secret=settings.spotify_client_secret,
