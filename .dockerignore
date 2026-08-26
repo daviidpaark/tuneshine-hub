@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python & virtual environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+test_*.py
+tests/
+
+# Environment and Secrets (CRITICAL)
+.env
+*.env.local
+*.env.*.local
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Documentation & Assets
+*.md
+LICENSE
+tuneshine-hub.xml

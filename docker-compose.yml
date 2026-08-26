@@ -1,0 +1,22 @@
+services:
+  tuneshine-hub:
+    image: ghcr.io/daviidpaark/tuneshine-hub:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tuneshine-hub
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8585}:8585"
+    environment:
+      # IP address or hostname of your physical Tuneshine device
+      - TUNESHINE_HOST=${TUNESHINE_HOST:-192.168.1.100}
+      - PORT=${PORT:-8585}
+
+      # Spotify Web API configuration (Optional)
+      - SPOTIFY_ENABLED=${SPOTIFY_ENABLED:-false}
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
+      - SPOTIFY_REFRESH_TOKEN=${SPOTIFY_REFRESH_TOKEN:-}
+      - SPOTIFY_POLL_INTERVAL=${SPOTIFY_POLL_INTERVAL:-3}
+      - SPOTIFY_SERVICENAME=${SPOTIFY_SERVICENAME:-Spotify}

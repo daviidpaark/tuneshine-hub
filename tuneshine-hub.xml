@@ -1,0 +1,123 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>tuneshine-hub</Name>
+  <Repository>ghcr.io/daviidpaark/tuneshine-hub:latest</Repository>
+  <Registry>https://github.com/daviidpaark/tuneshine-hub/pkgs/container/tuneshine-hub</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/daviidpaark/tuneshine-hub/issues</Support>
+  <Project>https://github.com/daviidpaark/tuneshine-hub</Project>
+  <Overview>Smart proxy controller and media aggregator for Tuneshine LED pixel displays. Manages background Spotify polling, accepts playback events from Navidrome, and arbitrates latest-event display updates to your physical Tuneshine device.</Overview>
+  <Category>MediaApp:Music Status:Stable</Category>
+  <WebUI>http://[IP]:[PORT:8585]/docs</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/daviidpaark/tuneshine-hub/main/tuneshine-hub.xml</TemplateURL>
+  <Icon/>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Description>Smart proxy controller and media aggregator for Tuneshine LED pixel displays.</Description>
+  <Networking>
+    <Mode>bridge</Mode>
+    <Publish>
+      <Port>
+        <HostPort>8585</HostPort>
+        <ContainerPort>8585</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+    </Publish>
+  </Networking>
+  <Data/>
+  <Environment>
+    <Variable>
+      <Value/>
+      <Name>TUNESHINE_HOST</Name>
+      <Mode/>
+      <Description>IP address or hostname of your physical Tuneshine device (e.g. 192.168.1.112 or tuneshine.local)</Description>
+      <Type>Variable</Type>
+      <Display>always</Display>
+      <Required>true</Required>
+      <Mask>false</Mask>
+    </Variable>
+    <Variable>
+      <Value>8585</Value>
+      <Name>PORT</Name>
+      <Mode/>
+      <Description>Web server port for Tuneshine Hub</Description>
+      <Type>Variable</Type>
+      <Display>advanced</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Variable>
+    <Variable>
+      <Value>false</Value>
+      <Name>SPOTIFY_ENABLED</Name>
+      <Mode/>
+      <Description>Enable Spotify Web API playback tracking (true/false)</Description>
+      <Type>Variable</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>SPOTIFY_CLIENT_ID</Name>
+      <Mode/>
+      <Description>Spotify Developer Client ID</Description>
+      <Type>Variable</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>SPOTIFY_CLIENT_SECRET</Name>
+      <Mode/>
+      <Description>Spotify Developer Client Secret</Description>
+      <Type>Variable</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>true</Mask>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>SPOTIFY_REFRESH_TOKEN</Name>
+      <Mode/>
+      <Description>Spotify OAuth Refresh Token</Description>
+      <Type>Variable</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>true</Mask>
+    </Variable>
+    <Variable>
+      <Value>3</Value>
+      <Name>SPOTIFY_POLL_INTERVAL</Name>
+      <Mode/>
+      <Description>Spotify polling interval in seconds (default: 3)</Description>
+      <Type>Variable</Type>
+      <Display>advanced</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Variable>
+    <Variable>
+      <Value>Spotify</Value>
+      <Name>SPOTIFY_SERVICENAME</Name>
+      <Mode/>
+      <Description>Service name label shown on display for Spotify tracks</Description>
+      <Type>Variable</Type>
+      <Display>advanced</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Variable>
+  </Environment>
+  <Config Name="WebUI Port" Target="8585" Default="8585" Mode="tcp" Description="Port for Tuneshine Hub web server" Type="Port" Display="always" Required="true" Mask="false">8585</Config>
+  <Config Name="Tuneshine Host IP" Target="TUNESHINE_HOST" Default="" Mode="" Description="IP address of physical Tuneshine device" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Enable Spotify" Target="SPOTIFY_ENABLED" Default="false" Mode="" Description="Enable Spotify playback tracking (true/false)" Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Spotify Client ID" Target="SPOTIFY_CLIENT_ID" Default="" Mode="" Description="Spotify Developer Client ID" Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Spotify Client Secret" Target="SPOTIFY_CLIENT_SECRET" Default="" Mode="" Description="Spotify Developer Client Secret" Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Spotify Refresh Token" Target="SPOTIFY_REFRESH_TOKEN" Default="" Mode="" Description="Spotify OAuth Refresh Token" Type="Variable" Display="always" Required="false" Mask="true"/>
+</Container>
