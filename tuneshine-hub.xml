@@ -104,10 +104,30 @@
       <Mask>true</Mask>
     </Variable>
     <Variable>
-      <Value>3</Value>
+      <Value>5</Value>
       <Name>SPOTIFY_POLL_INTERVAL</Name>
       <Mode/>
-      <Description>Spotify polling interval in seconds (default: 3)</Description>
+      <Description>Spotify active polling interval in seconds when music is playing (default: 5)</Description>
+      <Type>Variable</Type>
+      <Display>advanced</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Variable>
+    <Variable>
+      <Value>15</Value>
+      <Name>SPOTIFY_IDLE_POLL_INTERVAL</Name>
+      <Mode/>
+      <Description>Spotify idle polling interval in seconds when nothing is playing (default: 15)</Description>
+      <Type>Variable</Type>
+      <Display>advanced</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Variable>
+    <Variable>
+      <Value>30.0</Value>
+      <Name>SPOTIFY_IDLE_DELAY</Name>
+      <Mode/>
+      <Description>Delay in seconds after playback stops before switching to idle polling (default: 30.0)</Description>
       <Type>Variable</Type>
       <Display>advanced</Display>
       <Required>false</Required>

@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     spotify_client_id: Optional[str] = ""
     spotify_client_secret: Optional[str] = ""
     spotify_refresh_token: Optional[str] = ""
-    spotify_poll_interval: int = 3
+    spotify_poll_interval: int = 5
+    spotify_idle_poll_interval: int = 15
+    spotify_idle_delay: float = 30.0
     spotify_servicename: str = "Spotify"
 
     model_config = SettingsConfigDict(

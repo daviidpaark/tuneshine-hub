@@ -113,7 +113,9 @@ docker run -d \
 | `SPOTIFY_CLIENT_ID` | Conditional | — | Spotify Developer Client ID (required if Spotify is enabled) |
 | `SPOTIFY_CLIENT_SECRET` | Conditional | — | Spotify Developer Client Secret (required if Spotify is enabled) |
 | `SPOTIFY_REFRESH_TOKEN` | Conditional | — | Spotify OAuth Refresh Token (required if Spotify is enabled) |
-| `SPOTIFY_POLL_INTERVAL` | No | `3` | Spotify check interval in seconds (default: 3) |
+| `SPOTIFY_POLL_INTERVAL` | No | `5` | Spotify active polling interval in seconds when music is playing (default: 5) |
+| `SPOTIFY_IDLE_POLL_INTERVAL` | No | `15` | Spotify idle polling interval in seconds when nothing is playing (default: 15) |
+| `SPOTIFY_IDLE_DELAY` | No | `30.0` | Inactivity delay in seconds before switching to idle polling rate (default: 30.0) |
 | `SPOTIFY_SERVICENAME` | No | `Spotify` | Label displayed on Tuneshine for Spotify tracks |
 
 ---

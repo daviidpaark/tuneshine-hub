@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -39,14 +40,21 @@ spotify_client = SpotifyClient(
 
 
 async def spotify_polling_worker():
-    """Background task that polls Spotify for currently playing tracks."""
+    """Background task that polls Spotify for currently playing tracks with adaptive idle backoff."""
     if not settings.spotify_enabled or not spotify_client.is_configured:
         logger.info("Spotify background polling is disabled or not configured")
         return
 
-    logger.info(f"Spotify polling worker started (interval: {settings.spotify_poll_interval}s)")
+    logger.info(
+        f"Spotify polling worker started (active: {settings.spotify_poll_interval}s, "
+        f"idle: {settings.spotify_idle_poll_interval}s, idle delay: {settings.spotify_idle_delay}s)"
+    )
+
+    last_active_time = 0.0
+    was_idle = True
 
     while True:
+        sleep_duration = settings.spotify_poll_interval
         try:
             if spotify_client.is_rate_limited:
                 cooldown = max(1.0, spotify_client.rate_limit_remaining)
@@ -55,7 +63,14 @@ async def spotify_polling_worker():
                 continue
 
             track = await spotify_client.get_currently_playing()
+            now = time.time()
+
             if track:
+                last_active_time = now
+                if was_idle:
+                    logger.info("Spotify playback detected, switched to active polling")
+                    was_idle = False
+
                 image_data = await spotify_client.fetch_image(track.image_url)
                 if image_data:
                     metadata = {
@@ -68,10 +83,22 @@ async def spotify_polling_worker():
             elif not spotify_client.is_rate_limited:
                 await state_mgr.on_spotify_stopped()
 
+            # Determine polling interval based on idle duration
+            now = time.time()
+            is_idle = (now - last_active_time) >= settings.spotify_idle_delay
+            if is_idle and not was_idle:
+                logger.info(
+                    f"Spotify idle for {settings.spotify_idle_delay}s, switched to idle polling ({settings.spotify_idle_poll_interval}s)"
+                )
+                was_idle = True
+
+            sleep_duration = settings.spotify_idle_poll_interval if is_idle else settings.spotify_poll_interval
+
         except Exception as e:
             logger.error(f"Error in Spotify polling loop: {e}")
+            sleep_duration = settings.spotify_idle_poll_interval
 
-        await asyncio.sleep(settings.spotify_poll_interval)
+        await asyncio.sleep(sleep_duration)
 
 
 @asynccontextmanager
