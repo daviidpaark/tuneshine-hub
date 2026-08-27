@@ -19,6 +19,15 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+
+class EndpointFilter(logging.Filter):
+    """Filter out health check requests from access logs to prevent log spam."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "GET /health" not in record.getMessage()
+
+
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
+
 logger = logging.getLogger("tuneshine-hub")
 
 state_mgr = HubStateManager(settings.clean_tuneshine_host, clear_delay=settings.clear_delay)
@@ -67,6 +76,9 @@ async def spotify_polling_worker():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure healthcheck filter is attached to uvicorn access logger
+    logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
+
     # Startup
     logger.info(f"Starting Tuneshine Hub (Target: {settings.clean_tuneshine_host or 'Not Configured'})")
     polling_task = asyncio.create_task(spotify_polling_worker())
