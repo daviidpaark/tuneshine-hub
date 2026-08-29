@@ -7,7 +7,7 @@
 
 A smart proxy controller and media aggregator for [Tuneshine](https://www.tuneshine.rocks/) LED displays.
 
-Acts as a central hub on your local network: it automatically manages **Spotify** playback polling, receives playback from **Navidrome** (via the [Navidrome Tuneshine Plugin](https://github.com/daviidpaark/tuneshine-navidrome)), handles automatic **Latest-Event-Wins** priority arbitration, and forwards 64×64 lossless WebP artwork to your physical Tuneshine device.
+Acts as a central hub on your local network: it automatically manages **Spotify** background playback polling, receives live playback from **Navidrome** (via the [Navidrome Tuneshine Plugin](https://github.com/daviidpaark/tuneshine-navidrome)), **Windows** (via [Tuneshine Windows](https://github.com/daviidpaark/tuneshine-windows)), and **Plex / Plexamp** (via native webhooks), handles automatic **Latest-Event-Wins** priority arbitration, and forwards 64×64 lossless WebP artwork to your physical Tuneshine device.
 
 ---
 
@@ -23,9 +23,10 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
 
 - **Drop-in Hardware API:** Exposes `POST /image` and `DELETE /image` matching the real Tuneshine hardware HTTP API.
 - **Latest-Event-Wins Priority Arbitration:**
-  - Whichever music service (Navidrome or Spotify) starts or changes tracks most recently claims the display.
+  - Whichever music service (Navidrome, Plexamp, Windows Companion, or Spotify) starts or changes tracks most recently claims the display.
   - When one service pauses or stops, the hub seamlessly falls back to the other active music stream before clearing to idle.
 - **Standalone 24/7 Spotify Engine:** Polls Spotify Web API asynchronously in the background with automatic token refreshing, rate-limit backoff, and CDN image downscaling.
+- **Plex & Plexamp Webhook Support:** Instant, event-driven track display via Plex Media Server webhooks with multi-criteria user, library, and player filtering.
 - **Universal Image Processing:** Automatically converts incoming JPEG/PNG/WebP images to 64×64 lossless WebP using Pillow.
 - **Artwork Hash Deduplication:** Eliminates redundant uploads for consecutive tracks with identical album artwork.
 
@@ -34,24 +35,25 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
 ## Architecture
 
 ```text
- ┌──────────────────────┐
- │   Spotify Web API    │
- └──────────┬───────────┘
-            │ Poll (every 3s)
-            ▼
-┌──────────────────────────────────────────────┐
-│            tuneshine-hub (Docker)            │
-│  - Latest-event wins arbitration             │  Upload 64x64 WebP  ┌─────────────────┐
-│  - Spotify token management                  │ ──────────────────► │ Tuneshine (LAN) │
-│  - Image downscaling to 64x64 WebP           │                     └─────────────────┘
-│  - Drop-in API (POST /image, DELETE /image)  │
-└──────────────────────▲───────────────────────┘
-                       │ POST /image (Standard API)
-                       │
-        ┌──────────────┴──────────────┐
-        │     tuneshine-navidrome     │
-        │           Plugin            │
-        └─────────────────────────────┘
+  ┌──────────────────────┐      ┌─────────────────────────┐
+  │   Spotify Web API    │      │  Plex Media Server /    │
+  │   (Background Poll)  │      │  Plexamp Webhook Event  │
+  └──────────┬───────────┘      └────────────┬────────────┘
+             │                               │ POST /webhook/plex
+             ▼                               ▼
+ ┌─────────────────────────────────────────────────────────────┐
+ │                   tuneshine-hub (Docker)                    │
+ │  - Latest-event wins arbitration                            │  Upload 64x64 WebP  ┌─────────────────┐
+ │  - Spotify token management & rate limit backoff            │ ──────────────────► │ Tuneshine (LAN) │
+ │  - Image downscaling to 64x64 WebP (Pillow)                 │                     └─────────────────┘
+ │  - Drop-in API (POST /image, DELETE /image)                 │
+ └──────────────────────▲──────────────────────▲───────────────┘
+                        │                      │ POST /image (Standard API)
+         ┌──────────────┴──────────────┐       │
+         │     tuneshine-navidrome     │       │ ┌─────────────────────────┐
+         │           Plugin            │       └─┤    tuneshine-windows    │
+         └─────────────────────────────┘         │    Desktop Companion    │
+                                                 └─────────────────────────┘
 ```
 
 ---
@@ -100,6 +102,17 @@ docker run -d \
   -e TUNESHINE_HOST=192.168.1.100 \
   ghcr.io/daviidpaark/tuneshine-hub:latest
 ```
+
+### Option C: Unraid (Community Applications)
+
+Tuneshine Hub includes an Unraid Community Applications XML template ([`tuneshine-hub.xml`](tuneshine-hub.xml)):
+
+1. In the Unraid WebGUI, navigate to **Docker** -> **Add Container**.
+2. Point the template repository/URL to:
+   ```
+   https://raw.githubusercontent.com/daviidpaark/tuneshine-hub/main/tuneshine-hub.xml
+   ```
+3. Set your `TUNESHINE_HOST` (and optional Spotify / Plex parameters), then click **Apply**.
 
 ---
 
@@ -150,11 +163,18 @@ Tuneshine Hub includes native support for **Plex Media Server Webhooks** (Plex P
 
 ## Connecting Clients (Navidrome, Windows & Others)
 
+### Navidrome Plugin
 In the [Navidrome Tuneshine Plugin](https://github.com/daviidpaark/tuneshine-navidrome):
-
 1. Set **Operation Mode** to `Tuneshine Hub (Offload Processing)`.
 2. Set **Target Host** to your Hub instance address (e.g. `tuneshine-hub:8585` or `<hub-ip>:8585`).
 3. Save settings.
+
+### Windows Desktop Companion
+In [Tuneshine Windows](https://github.com/daviidpaark/tuneshine-windows):
+1. Open the **Dashboard** (double-click the system tray icon).
+2. Set **Operation Mode** to `Tuneshine Hub (Offload)`.
+3. Enter your **Target Host** (e.g. `http://<hub-ip>:8585`).
+4. Ensure **Sync Enabled** is toggled on.
 
 ---
 
