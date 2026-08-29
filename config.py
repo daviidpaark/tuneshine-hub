@@ -20,6 +20,16 @@ class Settings(BaseSettings):
     spotify_idle_delay: float = 30.0
     spotify_servicename: str = "Spotify"
 
+    # Plex Webhook Configuration
+    plex_enabled: bool = True
+    plex_allowed_users: Optional[str] = ""
+    plex_allowed_libraries: Optional[str] = ""
+    plex_allowed_players: Optional[str] = ""
+    plex_url: Optional[str] = ""
+    plex_server_url: Optional[str] = ""
+    plex_token: Optional[str] = ""
+    plex_servicename: str = "Plexamp"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -31,6 +41,11 @@ class Settings(BaseSettings):
         host = self.tuneshine_host.strip()
         host = host.removeprefix("http://").removeprefix("https://").rstrip("/")
         return host
+
+    @property
+    def resolved_plex_url(self) -> str:
+        url = (self.plex_url or self.plex_server_url or "").strip().rstrip("/")
+        return url
 
 
 settings = Settings()

@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from config import settings
 from state_manager import HubStateManager
 from spotify import SpotifyClient
+from plex import PlexWebhookHandler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,6 +38,7 @@ spotify_client = SpotifyClient(
     client_secret=settings.spotify_client_secret,
     refresh_token=settings.spotify_refresh_token,
 )
+plex_handler = PlexWebhookHandler(settings)
 
 
 async def spotify_polling_worker():
@@ -120,6 +122,7 @@ async def lifespan(app: FastAPI):
         pass
 
     await spotify_client.close()
+    await plex_handler.close()
     await state_mgr.close()
     logger.info("Tuneshine Hub shutdown complete")
 
@@ -127,7 +130,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination hub for Tuneshine LED pixel matrix displays.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -164,6 +167,52 @@ async def delete_image():
     """
     await state_mgr.on_external_stopped()
     return Response(status_code=status.HTTP_200_OK)
+
+
+@app.post("/webhook/plex", summary="Plex Media Server Webhook")
+@app.post("/plex", summary="Plex Media Server Webhook (Short alias)")
+async def plex_webhook(
+    payload: str = Form(...),
+    thumb: Optional[UploadFile] = File(None),
+):
+    """
+    Receives webhook events from Plex Media Server (Plex Pass).
+    Filters by music track, allowed users, allowed libraries, and players.
+    """
+    parsed = plex_handler.parse_payload(payload)
+    if not parsed:
+        return JSONResponse(status_code=400, content={"error": "Invalid or missing JSON in 'payload'"})
+
+    allowed, reason = plex_handler.is_event_allowed(parsed)
+    if not allowed:
+        logger.debug(f"Plex webhook ignored: {reason}")
+        return JSONResponse(status_code=200, content={"status": "ignored", "reason": reason})
+
+    event = parsed.get("event")
+    meta = plex_handler.extract_track_metadata(parsed)
+
+    if event in ("media.play", "media.resume", "media.scrobble"):
+        raw_image = None
+        if thumb:
+            raw_image = await thumb.read()
+
+        if not raw_image:
+            thumb_path = (parsed.get("Metadata") or {}).get("thumb")
+            if thumb_path:
+                raw_image = await plex_handler.fetch_remote_artwork(thumb_path)
+
+        if not raw_image:
+            logger.warning("Plex webhook: No artwork found in webhook attachment or PMS")
+            return JSONResponse(status_code=200, content={"status": "ignored", "reason": "no artwork available"})
+
+        await state_mgr.on_external_playing(raw_image, meta)
+        return JSONResponse(status_code=200, content={"status": "playing", "metadata": meta})
+
+    elif event in ("media.pause", "media.stop"):
+        await state_mgr.on_external_stopped()
+        return JSONResponse(status_code=200, content={"status": "stopped"})
+
+    return JSONResponse(status_code=200, content={"status": "ignored", "reason": f"unhandled event '{event}'"})
 
 
 @app.get("/health", summary="Health check")

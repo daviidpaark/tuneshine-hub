@@ -203,6 +203,236 @@ class TestFastAPIEndpoints(unittest.TestCase):
         self.assertEqual(del_resp.status_code, 200)
 
 
+class TestPlexWebhook(unittest.TestCase):
+    def setUp(self):
+        state_mgr._push_to_tuneshine = AsyncMock()
+        state_mgr._clear_tuneshine = AsyncMock()
+        self.client = TestClient(app)
+
+    def _create_sample_image(self) -> bytes:
+        img = Image.new("RGB", (64, 64), color=(0, 128, 255))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        return buf.getvalue()
+
+    def test_plex_webhook_play_with_attached_thumb(self):
+        raw_img = self._create_sample_image()
+        payload = {
+            "event": "media.play",
+            "Account": {"title": "david", "id": 1},
+            "Player": {"title": "Plexamp"},
+            "Metadata": {
+                "type": "track",
+                "librarySectionTitle": "Music",
+                "librarySectionID": 2,
+                "title": "Track Title",
+                "parentTitle": "Album Title",
+                "grandparentTitle": "Artist Name",
+                "ratingKey": "9999",
+            },
+        }
+
+        resp = self.client.post(
+            "/webhook/plex",
+            data={"payload": json.dumps(payload)},
+            files={"thumb": ("thumb.jpg", raw_img, "image/jpeg")},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "playing")
+        self.assertEqual(data["metadata"]["artistName"], "Artist Name")
+        self.assertEqual(data["metadata"]["albumName"], "Album Title")
+        self.assertEqual(data["metadata"]["trackTitle"], "Track Title")
+        self.assertEqual(data["metadata"]["serviceName"], "Plexamp")
+
+    def test_plex_webhook_stop(self):
+        payload = {
+            "event": "media.stop",
+            "Account": {"title": "david"},
+            "Player": {"title": "Plexamp"},
+            "Metadata": {
+                "type": "track",
+                "title": "Track Title",
+            },
+        }
+
+        resp = self.client.post(
+            "/webhook/plex",
+            data={"payload": json.dumps(payload)},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "stopped")
+
+    def test_plex_webhook_filters_non_music(self):
+        raw_img = self._create_sample_image()
+        # Episode/Movie payload
+        payload = {
+            "event": "media.play",
+            "Account": {"title": "david"},
+            "Player": {"title": "Plex for Apple TV"},
+            "Metadata": {
+                "type": "episode",
+                "title": "Episode 1",
+                "parentTitle": "Season 1",
+                "grandparentTitle": "Show Name",
+            },
+        }
+
+        resp = self.client.post(
+            "/webhook/plex",
+            data={"payload": json.dumps(payload)},
+            files={"thumb": ("thumb.jpg", raw_img, "image/jpeg")},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "ignored")
+        self.assertIn("non-music", resp.json()["reason"])
+
+    def test_plex_webhook_user_filter(self):
+        from config import settings
+        orig_users = settings.plex_allowed_users
+        try:
+            settings.plex_allowed_users = "david,admin"
+            raw_img = self._create_sample_image()
+
+            # Allowed user
+            payload_ok = {
+                "event": "media.play",
+                "Account": {"title": "david"},
+                "Metadata": {"type": "track", "title": "Song"},
+            }
+            resp_ok = self.client.post(
+                "/webhook/plex",
+                data={"payload": json.dumps(payload_ok)},
+                files={"thumb": ("thumb.jpg", raw_img, "image/jpeg")},
+            )
+            self.assertEqual(resp_ok.json()["status"], "playing")
+
+            # Disallowed user
+            payload_bad = {
+                "event": "media.play",
+                "Account": {"title": "guest_user"},
+                "Metadata": {"type": "track", "title": "Song"},
+            }
+            resp_bad = self.client.post(
+                "/webhook/plex",
+                data={"payload": json.dumps(payload_bad)},
+                files={"thumb": ("thumb.jpg", raw_img, "image/jpeg")},
+            )
+            self.assertEqual(resp_bad.json()["status"], "ignored")
+            self.assertIn("not in allowed users", resp_bad.json()["reason"])
+        finally:
+            settings.plex_allowed_users = orig_users
+
+    def test_plex_webhook_library_filter(self):
+        from config import settings
+        orig_libs = settings.plex_allowed_libraries
+        try:
+            settings.plex_allowed_libraries = "Music,Lossless,4"
+            raw_img = self._create_sample_image()
+
+            # Allowed library title
+            payload_ok = {
+                "event": "media.play",
+                "Account": {"title": "david"},
+                "Metadata": {"type": "track", "librarySectionTitle": "Music", "title": "Song"},
+            }
+            resp_ok = self.client.post(
+                "/webhook/plex",
+                data={"payload": json.dumps(payload_ok)},
+                files={"thumb": ("thumb.jpg", raw_img, "image/jpeg")},
+            )
+            self.assertEqual(resp_ok.json()["status"], "playing")
+
+            # Allowed library ID
+            payload_id_ok = {
+                "event": "media.play",
+                "Account": {"title": "david"},
+                "Metadata": {"type": "track", "librarySectionID": 4, "title": "Song"},
+            }
+            resp_id_ok = self.client.post(
+                "/webhook/plex",
+                data={"payload": json.dumps(payload_id_ok)},
+                files={"thumb": ("thumb.jpg", raw_img, "image/jpeg")},
+            )
+            self.assertEqual(resp_id_ok.json()["status"], "playing")
+
+            # Disallowed library
+            payload_bad = {
+                "event": "media.play",
+                "Account": {"title": "david"},
+                "Metadata": {"type": "track", "librarySectionTitle": "Audiobooks", "librarySectionID": 9, "title": "Song"},
+            }
+            resp_bad = self.client.post(
+                "/webhook/plex",
+                data={"payload": json.dumps(payload_bad)},
+                files={"thumb": ("thumb.jpg", raw_img, "image/jpeg")},
+            )
+            self.assertEqual(resp_bad.json()["status"], "ignored")
+            self.assertIn("not in allowed libraries", resp_bad.json()["reason"])
+        finally:
+            settings.plex_allowed_libraries = orig_libs
+
+    def test_plex_webhook_player_filter(self):
+        from config import settings
+        orig_players = settings.plex_allowed_players
+        try:
+            settings.plex_allowed_players = "Plexamp"
+            raw_img = self._create_sample_image()
+
+            # Allowed player
+            payload_ok = {
+                "event": "media.play",
+                "Player": {"title": "Plexamp"},
+                "Metadata": {"type": "track", "title": "Song"},
+            }
+            resp_ok = self.client.post(
+                "/webhook/plex",
+                data={"payload": json.dumps(payload_ok)},
+                files={"thumb": ("thumb.jpg", raw_img, "image/jpeg")},
+            )
+            self.assertEqual(resp_ok.json()["status"], "playing")
+
+            # Disallowed player
+            payload_bad = {
+                "event": "media.play",
+                "Player": {"title": "Plex Web"},
+                "Metadata": {"type": "track", "title": "Song"},
+            }
+            resp_bad = self.client.post(
+                "/webhook/plex",
+                data={"payload": json.dumps(payload_bad)},
+                files={"thumb": ("thumb.jpg", raw_img, "image/jpeg")},
+            )
+            self.assertEqual(resp_bad.json()["status"], "ignored")
+            self.assertIn("not in allowed players", resp_bad.json()["reason"])
+        finally:
+            settings.plex_allowed_players = orig_players
+
+    def test_plex_webhook_remote_artwork_fetch(self):
+        from main import plex_handler
+        raw_img = self._create_sample_image()
+
+        with patch.object(plex_handler, "fetch_remote_artwork", new=AsyncMock(return_value=raw_img)):
+            payload = {
+                "event": "media.play",
+                "Metadata": {
+                    "type": "track",
+                    "title": "Remote Song",
+                    "parentTitle": "Remote Album",
+                    "grandparentTitle": "Remote Artist",
+                    "thumb": "/library/metadata/12345/thumb/12345",
+                },
+            }
+
+            resp = self.client.post(
+                "/webhook/plex",
+                data={"payload": json.dumps(payload)},
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.json()["status"], "playing")
+            self.assertEqual(resp.json()["metadata"]["artistName"], "Remote Artist")
+
+
 if __name__ == "__main__":
     unittest.main()
 

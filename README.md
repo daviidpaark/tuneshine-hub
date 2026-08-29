@@ -118,10 +118,37 @@ docker run -d \
 | `SPOTIFY_IDLE_POLL_INTERVAL` | No | `15` | Spotify idle polling interval in seconds when nothing is playing (default: 15) |
 | `SPOTIFY_IDLE_DELAY` | No | `30.0` | Inactivity delay in seconds before switching to idle polling rate (default: 30.0) |
 | `SPOTIFY_SERVICENAME` | No | `Spotify` | Label displayed on Tuneshine for Spotify tracks |
+| `PLEX_ENABLED` | No | `true` | Enable Plex Webhook endpoint (`/webhook/plex`) |
+| `PLEX_ALLOWED_USERS` | No | — | Comma-separated list of allowed Plex usernames or IDs (e.g. `david,admin`). Empty allows all users |
+| `PLEX_ALLOWED_LIBRARIES` | No | — | Comma-separated list of allowed music library names or IDs (e.g. `Music,Lossless`). Empty allows all music libraries |
+| `PLEX_ALLOWED_PLAYERS` | No | — | Comma-separated list of allowed player clients (e.g. `Plexamp`). Empty allows any Plex player |
+| `PLEX_SERVER_URL` | No | — | Base URL of Plex Media Server (e.g. `http://192.168.1.50:32400`) to fetch remote cover art if not attached in webhook |
+| `PLEX_TOKEN` | No | — | Plex authentication token (`X-Plex-Token`) for downloading high-res artwork from PMS |
+| `PLEX_SERVICENAME` | No | `Plexamp` | Label displayed on Tuneshine for Plexamp tracks |
 
 ---
 
-## Connecting Clients (Navidrome & Others)
+## Plex / Plexamp Webhook Integration
+
+Tuneshine Hub includes native support for **Plex Media Server Webhooks** (Plex Pass feature). Whenever Plexamp (or any Plex client) plays music, PMS pushes immediate event-driven metadata and artwork without any polling.
+
+### Setup Instructions:
+1. In Plex Web, go to **Settings** -> **Webhooks**.
+2. Click **Add Webhook** and enter:
+   ```
+   http://<hub-ip>:8585/webhook/plex
+   ```
+3. Save the webhook.
+
+### Filtering Options:
+* **Music-Only Filtering:** Non-music media (movies, TV shows, videos, clips) is automatically ignored.
+* **User Filtering:** Set `PLEX_ALLOWED_USERS="david"` so playback from other family members or shared users is ignored.
+* **Library Filtering:** Set `PLEX_ALLOWED_LIBRARIES="Music"` to only display tracks from specific music libraries.
+* **Player Filtering:** Set `PLEX_ALLOWED_PLAYERS="Plexamp"` to only sync playback from dedicated Plexamp clients.
+
+---
+
+## Connecting Clients (Navidrome, Windows & Others)
 
 In the [Navidrome Tuneshine Plugin](https://github.com/daviidpaark/tuneshine-navidrome):
 
@@ -137,6 +164,7 @@ In the [Navidrome Tuneshine Plugin](https://github.com/daviidpaark/tuneshine-nav
 | :--- | :--- | :--- |
 | `POST` | `/image` | Multipart artwork upload (`image` & `metadata`). Drop-in replacement for hardware API. |
 | `DELETE` | `/image` | Clears display or reverts to active Spotify playback. |
+| `POST` | `/webhook/plex` | Plex Media Server webhook listener (also aliased at `/plex`). |
 | `GET` | `/health` | Health check endpoint returning device connection status. |
 | `GET` | `/state` | Returns active playback source and playback status. |
 | `GET` | `/docs` | Interactive Swagger / OpenAPI documentation UI. |
