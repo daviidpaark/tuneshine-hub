@@ -126,8 +126,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Tuneshine Hub",
-    description="Smart proxy and media hub controller for Tuneshine displays",
-    version="1.0.0",
+    description="Central coordination hub for Tuneshine LED pixel matrix displays.",
+    version="0.1.0",
     lifespan=lifespan,
 )
 

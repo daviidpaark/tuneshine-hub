@@ -14,6 +14,7 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
 ## The Tuneshine Ecosystem
 
 - **[tuneshine-hub](https://github.com/daviidpaark/tuneshine-hub)** *(This repository)*: Central Docker hub service. Manages 24/7 background Spotify tracking, converts raw artwork to 64×64 WebP, arbitrates multi-source priority, and drives your physical Tuneshine device.
+- **[tuneshine-windows](https://github.com/daviidpaark/tuneshine-windows)**: Standalone Windows System Tray desktop companion. Hooks into Windows Media Controls (SMTC) to capture and stream real-time playback from Spotify, Apple Music, YouTube, Tidal, and local players to Tuneshine Hub (or directly to a physical Tuneshine device).
 - **[tuneshine-navidrome](https://github.com/daviidpaark/tuneshine-navidrome)**: Official Navidrome plugin. Streams live playback and cover art from your Navidrome music server to Tuneshine Hub (or directly to a physical Tuneshine device).
 
 ---
