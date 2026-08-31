@@ -7,8 +7,9 @@ class Settings(BaseSettings):
     tuneshine_host: str = ""
     port: int = 8585
 
-    # Debounce / Clearing Configuration
+    # Debounce / Clearing / Watchdog Configuration
     clear_delay: float = 2.0
+    heartbeat_timeout: float = 90.0
 
     # Spotify Configuration
     spotify_enabled: bool = False

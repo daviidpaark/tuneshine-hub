@@ -9,15 +9,17 @@ logger = logging.getLogger("tuneshine-hub.state")
 
 
 class HubStateManager:
-    def __init__(self, tuneshine_host: str, clear_delay: float = 2.0):
+    def __init__(self, tuneshine_host: str, clear_delay: float = 2.0, heartbeat_timeout: float = 90.0):
         self.tuneshine_host = tuneshine_host.strip().removeprefix("http://").removeprefix("https://").rstrip("/")
         self._http = httpx.AsyncClient(timeout=15.0)
         self._lock = asyncio.Lock()
         self.clear_delay = clear_delay
+        self.heartbeat_timeout = heartbeat_timeout
 
         self.active_source: Optional[str] = None  # "navidrome", "spotify", or None
         self.last_uploaded_hash: Optional[str] = None
         self._pending_clear_task: Optional[asyncio.Task] = None
+        self._heartbeat_watchdog_task: Optional[asyncio.Task] = None
 
         self.navidrome_state: Dict[str, Any] = {
             "is_playing": False,
@@ -42,10 +44,46 @@ class HubStateManager:
             self._pending_clear_task.cancel()
             self._pending_clear_task = None
 
+    def _cancel_heartbeat_watchdog(self):
+        if self._heartbeat_watchdog_task and not self._heartbeat_watchdog_task.done():
+            self._heartbeat_watchdog_task.cancel()
+            self._heartbeat_watchdog_task = None
+
+    def _arm_heartbeat_watchdog(self):
+        self._cancel_heartbeat_watchdog()
+        if self.heartbeat_timeout > 0:
+            self._heartbeat_watchdog_task = asyncio.create_task(self._delayed_heartbeat_timeout())
+
+    async def _delayed_heartbeat_timeout(self):
+        try:
+            await asyncio.sleep(self.heartbeat_timeout)
+            async with self._lock:
+                if self.navidrome_state["is_playing"] and self.active_source == "navidrome":
+                    logger.warning(
+                        f"External client heartbeat timed out ({self.heartbeat_timeout}s without update); clearing display"
+                    )
+                    self.navidrome_state["is_playing"] = False
+                    await self._resolve_external_stop()
+        except asyncio.CancelledError:
+            pass
+
+    async def on_heartbeat(self, source: str = "windows") -> bool:
+        """Called when a periodic heartbeat ping is received from an active client."""
+        async with self._lock:
+            if self.active_source == "navidrome" and self.navidrome_state["is_playing"]:
+                self._arm_heartbeat_watchdog()
+                logger.debug(f"Heartbeat received from '{source}', watchdog timer reset")
+                return True
+            return False
+
     async def on_external_playing(self, raw_image_data: bytes, metadata: Dict[str, Any]):
         """Called when Navidrome (or another external client) starts playing a track."""
         async with self._lock:
             self._cancel_pending_clear()
+            if metadata.get("heartbeat"):
+                self._arm_heartbeat_watchdog()
+            else:
+                self._cancel_heartbeat_watchdog()
             try:
                 webp_data = process_image_to_webp(raw_image_data)
             except Exception as e:
@@ -68,6 +106,7 @@ class HubStateManager:
     async def on_external_stopped(self):
         """Called when Navidrome pauses or stops playback."""
         async with self._lock:
+            self._cancel_heartbeat_watchdog()
             self.navidrome_state["is_playing"] = False
 
             if self.active_source == "navidrome":
@@ -86,6 +125,7 @@ class HubStateManager:
             pass
 
     async def _resolve_external_stop(self):
+        self._cancel_heartbeat_watchdog()
         if self.navidrome_state["is_playing"] or self.active_source != "navidrome":
             return
 
@@ -106,6 +146,7 @@ class HubStateManager:
         """Called when Spotify playback is active with a track."""
         async with self._lock:
             self._cancel_pending_clear()
+            self._cancel_heartbeat_watchdog()
             # Check if same Spotify track
             if self.spotify_state["is_playing"] and self.spotify_state["track_id"] == track_id and self.active_source == "spotify":
                 return
@@ -209,4 +250,5 @@ class HubStateManager:
 
     async def close(self):
         self._cancel_pending_clear()
+        self._cancel_heartbeat_watchdog()
         await self._http.aclose()

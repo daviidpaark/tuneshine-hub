@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.1] - 2026-08-30
+
+### Added
+- **Heartbeat Watchdog Engine:** Added `/heartbeat` (and `PUT /image` alias) endpoint for active desktop clients (such as `tuneshine-windows`) to send periodic keep-alives.
+- **Client Disconnect Protection:** Automatically clears the display (or reverts to active Spotify background playback) if a push client with active heartbeat stops communicating for `heartbeat_timeout` (default: 90 seconds), preventing displays from freezing on artwork when clients crash or shut down abruptly.
+- **Configurable Watchdog Timeout:** Added `heartbeat_timeout` setting (default: 90.0s) to Hub configuration.
+
+---
+
 ## [0.2.0] - 2026-08-29
 
 ### Added

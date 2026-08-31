@@ -32,7 +32,11 @@ logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
 logger = logging.getLogger("tuneshine-hub")
 
-state_mgr = HubStateManager(settings.clean_tuneshine_host, clear_delay=settings.clear_delay)
+state_mgr = HubStateManager(
+    settings.clean_tuneshine_host,
+    clear_delay=settings.clear_delay,
+    heartbeat_timeout=settings.heartbeat_timeout,
+)
 spotify_client = SpotifyClient(
     client_id=settings.spotify_client_id,
     client_secret=settings.spotify_client_secret,
@@ -130,7 +134,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination hub for Tuneshine LED pixel matrix displays.",
-    version="0.2.0",
+    version="0.2.1",
     lifespan=lifespan,
 )
 
@@ -167,6 +171,17 @@ async def delete_image():
     """
     await state_mgr.on_external_stopped()
     return Response(status_code=status.HTTP_200_OK)
+
+
+@app.post("/heartbeat", summary="Client playback heartbeat")
+@app.put("/image", summary="Client playback heartbeat (alias)")
+async def heartbeat(source: Optional[str] = "windows"):
+    """
+    Periodic heartbeat from active desktop companion or client.
+    Resets the watchdog timer to prevent display from freezing if client abruptly disconnects.
+    """
+    refreshed = await state_mgr.on_heartbeat(source=source or "windows")
+    return {"status": "ok" if refreshed else "ignored", "active_source": state_mgr.active_source}
 
 
 @app.post("/webhook/plex", summary="Plex Media Server Webhook")

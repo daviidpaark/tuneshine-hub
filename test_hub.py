@@ -133,6 +133,82 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(mgr.active_source)
         await mgr.close()
 
+    async def test_heartbeat_watchdog_timeout(self):
+        # Test that missing heartbeats trigger display clear after watchdog timeout
+        mgr = HubStateManager("192.168.1.100", clear_delay=0.0, heartbeat_timeout=0.05)
+        mgr._push_to_tuneshine = AsyncMock()
+        mgr._clear_tuneshine = AsyncMock()
+
+        img = Image.new("RGB", (50, 50), color=(100, 100, 100))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        dummy_img = buf.getvalue()
+        meta = {"artistName": "Artist 1", "albumName": "Album 1", "serviceName": "Windows", "heartbeat": True}
+
+        # 1. Start playback with heartbeat enabled
+        await mgr.on_external_playing(dummy_img, meta)
+        self.assertEqual(mgr.active_source, "navidrome")
+        self.assertTrue(mgr.navidrome_state["is_playing"])
+        self.assertIsNotNone(mgr._heartbeat_watchdog_task)
+
+        # 2. Wait out the watchdog timeout
+        await asyncio.sleep(0.08)
+
+        # 3. Watchdog should have triggered clear
+        self.assertFalse(mgr.navidrome_state["is_playing"])
+        self.assertIsNone(mgr.active_source)
+        mgr._clear_tuneshine.assert_called_once()
+        await mgr.close()
+
+    async def test_heartbeat_reset_prevents_timeout(self):
+        # Test that periodic heartbeats keep the session alive
+        mgr = HubStateManager("192.168.1.100", clear_delay=0.0, heartbeat_timeout=0.06)
+        mgr._push_to_tuneshine = AsyncMock()
+        mgr._clear_tuneshine = AsyncMock()
+
+        img = Image.new("RGB", (50, 50), color=(100, 100, 100))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        dummy_img = buf.getvalue()
+        meta = {"artistName": "Artist 1", "albumName": "Album 1", "serviceName": "Windows", "heartbeat": True}
+
+        await mgr.on_external_playing(dummy_img, meta)
+
+        # Send heartbeats every 0.03s (before 0.06s timeout)
+        for _ in range(3):
+            await asyncio.sleep(0.03)
+            refreshed = await mgr.on_heartbeat("windows")
+            self.assertTrue(refreshed)
+
+        # Still playing
+        self.assertTrue(mgr.navidrome_state["is_playing"])
+        self.assertEqual(mgr.active_source, "navidrome")
+        mgr._clear_tuneshine.assert_not_called()
+        await mgr.close()
+
+    async def test_heartbeat_cancelled_on_stop(self):
+        mgr = HubStateManager("192.168.1.100", clear_delay=0.0, heartbeat_timeout=0.05)
+        mgr._push_to_tuneshine = AsyncMock()
+        mgr._clear_tuneshine = AsyncMock()
+
+        img = Image.new("RGB", (50, 50), color=(100, 100, 100))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        dummy_img = buf.getvalue()
+        meta = {"artistName": "Artist 1", "albumName": "Album 1", "serviceName": "Windows", "heartbeat": True}
+
+        await mgr.on_external_playing(dummy_img, meta)
+        self.assertIsNotNone(mgr._heartbeat_watchdog_task)
+
+        # External stopped
+        await mgr.on_external_stopped()
+        self.assertIsNone(mgr._heartbeat_watchdog_task)
+
+        # on_heartbeat should now return False when not playing
+        refreshed = await mgr.on_heartbeat("windows")
+        self.assertFalse(refreshed)
+        await mgr.close()
+
 
 class TestSpotifyClient(unittest.IsolatedAsyncioTestCase):
     async def test_spotify_rate_limit_backoff(self):
@@ -201,6 +277,38 @@ class TestFastAPIEndpoints(unittest.TestCase):
         # DELETE /image
         del_resp = self.client.delete("/image")
         self.assertEqual(del_resp.status_code, 200)
+
+    def test_heartbeat_endpoint(self):
+        # 1. Heartbeat when nothing playing -> returns ignored
+        resp = self.client.post("/heartbeat")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "ignored")
+
+        # 2. Start playing
+        img = Image.new("RGB", (50, 50), color=(255, 255, 0))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        raw_jpeg = buf.getvalue()
+        meta = {"artistName": "Artist", "albumName": "Album", "serviceName": "Windows", "heartbeat": True}
+
+        self.client.post(
+            "/image",
+            files={"image": ("cover.jpg", raw_jpeg, "image/jpeg")},
+            data={"metadata": json.dumps(meta)},
+        )
+
+        # 3. Heartbeat via POST /heartbeat -> returns ok
+        hb_resp = self.client.post("/heartbeat")
+        self.assertEqual(hb_resp.status_code, 200)
+        self.assertEqual(hb_resp.json()["status"], "ok")
+
+        # 4. Heartbeat via PUT /image alias -> returns ok
+        put_resp = self.client.put("/image")
+        self.assertEqual(put_resp.status_code, 200)
+        self.assertEqual(put_resp.json()["status"], "ok")
+
+        # Clean up
+        self.client.delete("/image")
 
 
 class TestPlexWebhook(unittest.TestCase):
