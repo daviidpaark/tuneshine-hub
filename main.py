@@ -134,7 +134,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination hub for Tuneshine LED pixel matrix displays.",
-    version="0.2.1",
+    version="0.2.2",
     lifespan=lifespan,
 )
 
@@ -243,7 +243,7 @@ async def health_check():
 async def get_state():
     return {
         "active_source": state_mgr.active_source,
-        "navidrome_playing": state_mgr.navidrome_state["is_playing"],
+        "external_playing": state_mgr.external_state["is_playing"],
         "spotify_playing": state_mgr.spotify_state["is_playing"],
         "tuneshine_host": settings.clean_tuneshine_host,
     }

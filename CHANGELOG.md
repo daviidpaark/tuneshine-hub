@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.2] - 2026-09-04
+
+### Refactored
+- **State Tracking Terminology:** Renamed internal state tracker variables and logs from `navidrome_state` to `external_state` across `state_manager.py` and `main.py` to clearly represent any external media source (Navidrome, Windows companion, Plex webhooks).
+
+### Added
+- **Exact Working Dependency Lock:** Added `requirements-lock.txt` for reproducible Hub deployment and container builds.
+
+---
+
 ## [0.2.1] - 2026-08-30
 
 ### Added

@@ -56,8 +56,8 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
 
         # 1. Navidrome starts playing
         await self.mgr.on_external_playing(dummy_img, meta1)
-        self.assertEqual(self.mgr.active_source, "navidrome")
-        self.assertTrue(self.mgr.navidrome_state["is_playing"])
+        self.assertEqual(self.mgr.active_source, "external")
+        self.assertTrue(self.mgr.external_state["is_playing"])
 
         # 2. Spotify starts playing -> Latest event wins
         await self.mgr.on_spotify_playing("spot1", dummy_img, meta2)
@@ -66,13 +66,13 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
 
         # 3. Spotify stops -> Automatically reverts to active Navidrome
         await self.mgr.on_spotify_stopped()
-        self.assertEqual(self.mgr.active_source, "navidrome")
-        self.assertTrue(self.mgr.navidrome_state["is_playing"])
+        self.assertEqual(self.mgr.active_source, "external")
+        self.assertTrue(self.mgr.external_state["is_playing"])
 
         # 4. Navidrome stops -> Display clears to idle
         await self.mgr.on_external_stopped()
         self.assertIsNone(self.mgr.active_source)
-        self.assertFalse(self.mgr.navidrome_state["is_playing"])
+        self.assertFalse(self.mgr.external_state["is_playing"])
         self.mgr._clear_tuneshine.assert_called()
 
     async def test_debounced_clear_cancellation(self):
@@ -90,7 +90,7 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
 
         # 1. Initial track playing
         await mgr.on_external_playing(dummy_img, meta1)
-        self.assertEqual(mgr.active_source, "navidrome")
+        self.assertEqual(mgr.active_source, "external")
 
         # 2. External stopped event arrives (e.g. Navidrome websocket disconnect or track change)
         await mgr.on_external_stopped()
@@ -105,7 +105,7 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
 
         # Clear should NEVER have been called on the physical device
         mgr._clear_tuneshine.assert_not_called()
-        self.assertEqual(mgr.active_source, "navidrome")
+        self.assertEqual(mgr.active_source, "external")
         await mgr.close()
 
     async def test_debounced_clear_execution(self):
@@ -124,7 +124,7 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         await mgr.on_external_stopped()
 
         # Before delay completes, display has not cleared
-        self.assertFalse(mgr.navidrome_state["is_playing"])
+        self.assertFalse(mgr.external_state["is_playing"])
         mgr._clear_tuneshine.assert_not_called()
 
         # After delay completes, clear is executed
@@ -147,15 +147,15 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
 
         # 1. Start playback with heartbeat enabled
         await mgr.on_external_playing(dummy_img, meta)
-        self.assertEqual(mgr.active_source, "navidrome")
-        self.assertTrue(mgr.navidrome_state["is_playing"])
+        self.assertEqual(mgr.active_source, "external")
+        self.assertTrue(mgr.external_state["is_playing"])
         self.assertIsNotNone(mgr._heartbeat_watchdog_task)
 
         # 2. Wait out the watchdog timeout
         await asyncio.sleep(0.08)
 
         # 3. Watchdog should have triggered clear
-        self.assertFalse(mgr.navidrome_state["is_playing"])
+        self.assertFalse(mgr.external_state["is_playing"])
         self.assertIsNone(mgr.active_source)
         mgr._clear_tuneshine.assert_called_once()
         await mgr.close()
@@ -181,8 +181,8 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(refreshed)
 
         # Still playing
-        self.assertTrue(mgr.navidrome_state["is_playing"])
-        self.assertEqual(mgr.active_source, "navidrome")
+        self.assertTrue(mgr.external_state["is_playing"])
+        self.assertEqual(mgr.active_source, "external")
         mgr._clear_tuneshine.assert_not_called()
         await mgr.close()
 
@@ -251,7 +251,7 @@ class TestFastAPIEndpoints(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("active_source", data)
-        self.assertIn("navidrome_playing", data)
+        self.assertIn("external_playing", data)
         self.assertIn("spotify_playing", data)
 
     def test_post_image_and_delete_endpoints(self):
@@ -272,7 +272,7 @@ class TestFastAPIEndpoints(unittest.TestCase):
 
         # Verify state
         state_resp = self.client.get("/state")
-        self.assertEqual(state_resp.json()["active_source"], "navidrome")
+        self.assertEqual(state_resp.json()["active_source"], "external")
 
         # DELETE /image
         del_resp = self.client.delete("/image")

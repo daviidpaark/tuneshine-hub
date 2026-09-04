@@ -16,12 +16,12 @@ class HubStateManager:
         self.clear_delay = clear_delay
         self.heartbeat_timeout = heartbeat_timeout
 
-        self.active_source: Optional[str] = None  # "navidrome", "spotify", or None
+        self.active_source: Optional[str] = None  # "external", "spotify", or None
         self.last_uploaded_hash: Optional[str] = None
         self._pending_clear_task: Optional[asyncio.Task] = None
         self._heartbeat_watchdog_task: Optional[asyncio.Task] = None
 
-        self.navidrome_state: Dict[str, Any] = {
+        self.external_state: Dict[str, Any] = {
             "is_playing": False,
             "track_id": None,
             "webp_data": None,
@@ -58,11 +58,11 @@ class HubStateManager:
         try:
             await asyncio.sleep(self.heartbeat_timeout)
             async with self._lock:
-                if self.navidrome_state["is_playing"] and self.active_source == "navidrome":
+                if self.external_state["is_playing"] and self.active_source == "external":
                     logger.warning(
                         f"External client heartbeat timed out ({self.heartbeat_timeout}s without update); clearing display"
                     )
-                    self.navidrome_state["is_playing"] = False
+                    self.external_state["is_playing"] = False
                     await self._resolve_external_stop()
         except asyncio.CancelledError:
             pass
@@ -70,7 +70,7 @@ class HubStateManager:
     async def on_heartbeat(self, source: str = "windows") -> bool:
         """Called when a periodic heartbeat ping is received from an active client."""
         async with self._lock:
-            if self.active_source == "navidrome" and self.navidrome_state["is_playing"]:
+            if self.active_source == "external" and self.external_state["is_playing"]:
                 self._arm_heartbeat_watchdog()
                 logger.debug(f"Heartbeat received from '{source}', watchdog timer reset")
                 return True
@@ -92,24 +92,24 @@ class HubStateManager:
 
             item_id = metadata.get("itemId") or metadata.get("artistName", "") + metadata.get("albumName", "")
 
-            self.navidrome_state = {
+            self.external_state = {
                 "is_playing": True,
                 "track_id": item_id,
                 "webp_data": webp_data,
                 "metadata": metadata,
             }
 
-            # Latest-event wins: Navidrome takes the display
-            self.active_source = "navidrome"
+            # Latest-event wins: external client takes the display
+            self.active_source = "external"
             await self._push_to_tuneshine(webp_data, metadata)
 
     async def on_external_stopped(self):
         """Called when Navidrome pauses or stops playback."""
         async with self._lock:
             self._cancel_heartbeat_watchdog()
-            self.navidrome_state["is_playing"] = False
+            self.external_state["is_playing"] = False
 
-            if self.active_source == "navidrome":
+            if self.active_source == "external":
                 self._cancel_pending_clear()
                 if self.clear_delay > 0:
                     self._pending_clear_task = asyncio.create_task(self._delayed_external_stop())
@@ -126,7 +126,7 @@ class HubStateManager:
 
     async def _resolve_external_stop(self):
         self._cancel_heartbeat_watchdog()
-        if self.navidrome_state["is_playing"] or self.active_source != "navidrome":
+        if self.external_state["is_playing"] or self.active_source != "external":
             return
 
         # Fallback: if Spotify is currently playing, switch back to Spotify
@@ -195,13 +195,13 @@ class HubStateManager:
         if self.spotify_state["is_playing"] or self.active_source != "spotify":
             return
 
-        # Fallback: if Navidrome is currently playing, switch back to Navidrome
-        if self.navidrome_state["is_playing"] and self.navidrome_state["webp_data"]:
+        # Fallback: if external client is currently playing, switch back
+        if self.external_state["is_playing"] and self.external_state["webp_data"]:
             logger.info("Spotify stopped, reverting to active external playback")
-            self.active_source = "navidrome"
+            self.active_source = "external"
             await self._push_to_tuneshine(
-                self.navidrome_state["webp_data"],
-                self.navidrome_state["metadata"],
+                self.external_state["webp_data"],
+                self.external_state["metadata"],
                 force=True,
             )
         else:
