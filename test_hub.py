@@ -313,9 +313,31 @@ class TestFastAPIEndpoints(unittest.TestCase):
 
 class TestPlexWebhook(unittest.TestCase):
     def setUp(self):
+        from config import settings
+
+        self.original_plex_filters = (
+            settings.plex_allowed_users,
+            settings.plex_allowed_libraries,
+            settings.plex_allowed_players,
+            settings.plex_servicename,
+        )
+        settings.plex_allowed_users = ""
+        settings.plex_allowed_libraries = ""
+        settings.plex_allowed_players = ""
+        settings.plex_servicename = "Plexamp"
         state_mgr._push_to_tuneshine = AsyncMock()
         state_mgr._clear_tuneshine = AsyncMock()
         self.client = TestClient(app)
+
+    def tearDown(self):
+        from config import settings
+
+        (
+            settings.plex_allowed_users,
+            settings.plex_allowed_libraries,
+            settings.plex_allowed_players,
+            settings.plex_servicename,
+        ) = self.original_plex_filters
 
     def _create_sample_image(self) -> bytes:
         img = Image.new("RGB", (64, 64), color=(0, 128, 255))

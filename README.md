@@ -23,7 +23,7 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
 
 - **Drop-in Hardware API:** Exposes `POST /image` and `DELETE /image` matching the real Tuneshine hardware HTTP API.
 - **Latest-Event-Wins Priority Arbitration:**
-  - Whichever music service (Navidrome, Plexamp, Windows Companion, or Spotify) starts or changes tracks most recently claims the display.
+   - Whichever music source (Navidrome, Plexamp, Tuneshine Windows Desktop Companion, or Spotify) starts or changes tracks most recently claims the display.
   - When one service pauses or stops, the hub seamlessly falls back to the other active music stream before clearing to idle.
 - **Standalone 24/7 Spotify Engine:** Polls Spotify Web API asynchronously in the background with automatic token refreshing, rate-limit backoff, and CDN image downscaling.
 - **Plex & Plexamp Webhook Support:** Instant, event-driven track display via Plex Media Server webhooks with multi-criteria user, library, and player filtering.
@@ -165,14 +165,14 @@ Tuneshine Hub includes native support for **Plex Media Server Webhooks** (Plex P
 
 ### Navidrome Plugin
 In the [Navidrome Tuneshine Plugin](https://github.com/daviidpaark/tuneshine-navidrome):
-1. Set **Operation Mode** to `Tuneshine Hub (Offload Processing)`.
+1. Set **Operation Mode** to `Tuneshine Hub`.
 2. Set **Target Host** to your Hub instance address (e.g. `tuneshine-hub:8585` or `<hub-ip>:8585`).
 3. Save settings.
 
 ### Windows Desktop Companion
 In [Tuneshine Windows](https://github.com/daviidpaark/tuneshine-windows):
 1. Open the **Dashboard** (double-click the system tray icon).
-2. Set **Operation Mode** to `Tuneshine Hub (Offload)`.
+2. Set **Operation Mode** to `Tuneshine Hub`.
 3. Enter your **Target Host** (e.g. `http://<hub-ip>:8585`).
 4. Ensure **Sync Enabled** is toggled on.
 
