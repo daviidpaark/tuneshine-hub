@@ -5,6 +5,12 @@ All notable changes to the `tuneshine-hub` central service will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-09-11
+
+### Fixed
+- **Upload File Handle Disposal:** Wrapped `image.read()` and `thumb.read()` in `try ... finally` blocks in `post_image` and `plex_webhook` endpoints to guarantee `await file.close()` is executed immediately, freeing temporary spool files and system handles.
+- **Pillow Image Lifetime Management:** Explicitly close intermediate converted and resized Pillow `Image` objects in `image_utils.process_image_to_webp()` to prevent buffer retention.
+
 ---
 
 ## [0.2.2] - 2026-09-04

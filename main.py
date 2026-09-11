@@ -133,8 +133,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Tuneshine Hub",
-    description="Central coordination hub for Tuneshine LED pixel matrix displays.",
-    version="0.2.2",
+    description="Central coordination service for Tuneshine ecosystem",
+    version="0.2.3",
     lifespan=lifespan,
 )
 
@@ -148,7 +148,11 @@ async def post_image(
     Standard Tuneshine drop-in endpoint.
     Accepts multipart form-data with 'image' and 'metadata'.
     """
-    raw_image = await image.read()
+    try:
+        raw_image = await image.read()
+    finally:
+        await image.close()
+
     if not raw_image:
         return JSONResponse(status_code=400, content={"error": "Empty image payload"})
 
@@ -209,7 +213,10 @@ async def plex_webhook(
     if event in ("media.play", "media.resume", "media.scrobble"):
         raw_image = None
         if thumb:
-            raw_image = await thumb.read()
+            try:
+                raw_image = await thumb.read()
+            finally:
+                await thumb.close()
 
         if not raw_image:
             thumb_path = (parsed.get("Metadata") or {}).get("thumb")
