@@ -60,6 +60,8 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
 
 ## Quick Start
 
+Images are published to `ghcr.io` only for version tags. `latest` points to the newest release; pin a version tag (for example `1.2.3`) to stay on a specific release.
+
 ### Option A: Docker Compose (Recommended)
 
 Create a `docker-compose.yml` file:
