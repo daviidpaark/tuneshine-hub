@@ -39,15 +39,19 @@ class HubStateManager:
     def is_configured(self) -> bool:
         return bool(self.tuneshine_host)
 
+    def is_spotify_track_playing(self, track_id: str) -> bool:
+        return self.spotify_state["is_playing"] and self.spotify_state["track_id"] == track_id
+
     def _cancel_pending_clear(self):
         if self._pending_clear_task and not self._pending_clear_task.done():
             self._pending_clear_task.cancel()
             self._pending_clear_task = None
 
     def _cancel_heartbeat_watchdog(self):
-        if self._heartbeat_watchdog_task and not self._heartbeat_watchdog_task.done():
-            self._heartbeat_watchdog_task.cancel()
-            self._heartbeat_watchdog_task = None
+        task = self._heartbeat_watchdog_task
+        if task and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+        self._heartbeat_watchdog_task = None
 
     def _arm_heartbeat_watchdog(self):
         self._cancel_heartbeat_watchdog()
@@ -58,9 +62,9 @@ class HubStateManager:
         try:
             await asyncio.sleep(self.heartbeat_timeout)
             async with self._lock:
-                if self.external_state["is_playing"] and self.active_source == "external":
+                if self.external_state["is_playing"]:
                     logger.warning(
-                        f"External client heartbeat timed out ({self.heartbeat_timeout}s without update); clearing display"
+                        f"External client heartbeat timed out ({self.heartbeat_timeout}s without update); marking stopped"
                     )
                     self.external_state["is_playing"] = False
                     await self._resolve_external_stop()
@@ -70,7 +74,7 @@ class HubStateManager:
     async def on_heartbeat(self, source: str = "windows") -> bool:
         """Called when a periodic heartbeat ping is received from an active client."""
         async with self._lock:
-            if self.active_source == "external" and self.external_state["is_playing"]:
+            if self.external_state["is_playing"]:
                 self._arm_heartbeat_watchdog()
                 logger.debug(f"Heartbeat received from '{source}', watchdog timer reset")
                 return True
@@ -145,11 +149,9 @@ class HubStateManager:
     async def on_spotify_playing(self, track_id: str, raw_image_data: bytes, metadata: Dict[str, Any]):
         """Called when Spotify playback is active with a track."""
         async with self._lock:
-            self._cancel_pending_clear()
-            self._cancel_heartbeat_watchdog()
-            # Check if same Spotify track
-            if self.spotify_state["is_playing"] and self.spotify_state["track_id"] == track_id and self.active_source == "spotify":
+            if self.is_spotify_track_playing(track_id):
                 return
+            self._cancel_pending_clear()
 
             try:
                webp_data = process_image_to_webp(raw_image_data)

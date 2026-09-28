@@ -77,15 +77,16 @@ async def spotify_polling_worker():
                     logger.info("Spotify playback detected, switched to active polling")
                     was_idle = False
 
-                image_data = await spotify_client.fetch_image(track.image_url)
-                if image_data:
-                    metadata = {
-                        "artistName": track.artist,
-                        "albumName": track.album,
-                        "serviceName": settings.spotify_servicename,
-                        "itemId": track.id,
-                    }
-                    await state_mgr.on_spotify_playing(track.id, image_data, metadata)
+                if not state_mgr.is_spotify_track_playing(track.id):
+                    image_data = await spotify_client.fetch_image(track.image_url)
+                    if image_data:
+                        metadata = {
+                            "artistName": track.artist,
+                            "albumName": track.album,
+                            "serviceName": settings.spotify_servicename,
+                            "itemId": track.id,
+                        }
+                        await state_mgr.on_spotify_playing(track.id, image_data, metadata)
             elif not spotify_client.is_rate_limited:
                 await state_mgr.on_spotify_stopped()
 
@@ -134,7 +135,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination service for Tuneshine ecosystem",
-    version="0.2.3",
+    version="0.2.4",
     lifespan=lifespan,
 )
 

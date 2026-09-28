@@ -5,6 +5,16 @@ All notable changes to the `tuneshine-hub` central service will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-09-28
+
+### Fixed
+- **Heartbeat Watchdog Clear:** The watchdog cancelled its own task while resolving a timeout, so the `DELETE /image` (or Spotify fallback push) was aborted and the Tuneshine kept showing stale artwork. `_cancel_heartbeat_watchdog()` now skips the current task.
+- **Spotify Poll Display Takeover:** Repeat polls of the same Spotify track no longer take the display back from an external client or cancel its heartbeat watchdog. Artwork is only downloaded when the Spotify track changes.
+- **Heartbeat While Spotify Active:** Heartbeats now refresh any playing external session, and a timeout marks it stopped even when Spotify holds the display, so Spotify stopping no longer falls back to stale artwork.
+- **Plex Null Media Type:** Webhooks with `null` `type` or `librarySectionType` are ignored instead of returning HTTP 500.
+
+---
+
 ## [0.2.3] - 2026-09-11
 
 ### Fixed

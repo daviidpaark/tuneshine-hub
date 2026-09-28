@@ -134,7 +134,7 @@ Tuneshine Hub includes an Unraid Community Applications XML template ([`tuneshin
 | `SPOTIFY_IDLE_DELAY` | No | `30.0` | Inactivity delay in seconds before switching to idle polling rate (default: 30.0) |
 | `SPOTIFY_SERVICENAME` | No | `Spotify` | Label displayed on Tuneshine for Spotify tracks |
 | `PLEX_ENABLED` | No | `true` | Enable Plex Webhook endpoint (`/webhook/plex`) |
-| `PLEX_ALLOWED_USERS` | No | — | Comma-separated list of allowed Plex usernames or IDs (e.g. `david,admin`). Empty allows all users |
+| `PLEX_ALLOWED_USERS` | No | — | Comma-separated list of allowed Plex usernames or IDs (e.g. `user,admin`). Empty allows all users |
 | `PLEX_ALLOWED_LIBRARIES` | No | — | Comma-separated list of allowed music library names or IDs (e.g. `Music,Lossless`). Empty allows all music libraries |
 | `PLEX_ALLOWED_PLAYERS` | No | — | Comma-separated list of allowed player clients (e.g. `Plexamp`). Empty allows any Plex player |
 | `PLEX_SERVER_URL` | No | — | Base URL of Plex Media Server (e.g. `http://192.168.1.50:32400`) to fetch remote cover art if not attached in webhook |
@@ -157,7 +157,7 @@ Tuneshine Hub includes native support for **Plex Media Server Webhooks** (Plex P
 
 ### Filtering Options:
 * **Music-Only Filtering:** Non-music media (movies, TV shows, videos, clips) is automatically ignored.
-* **User Filtering:** Set `PLEX_ALLOWED_USERS="david"` so playback from other family members or shared users is ignored.
+* **User Filtering:** Set `PLEX_ALLOWED_USERS="your_username"` so playback from other family members or shared users is ignored.
 * **Library Filtering:** Set `PLEX_ALLOWED_LIBRARIES="Music"` to only display tracks from specific music libraries.
 * **Player Filtering:** Set `PLEX_ALLOWED_PLAYERS="Plexamp"` to only sync playback from dedicated Plexamp clients.
 

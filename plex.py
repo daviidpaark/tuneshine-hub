@@ -46,8 +46,8 @@ class PlexWebhookHandler:
             return False, "Missing event field in payload"
 
         meta = payload.get("Metadata") or {}
-        media_type = meta.get("type", "").lower()
-        library_type = meta.get("librarySectionType", "").lower()
+        media_type = (meta.get("type") or "").lower()
+        library_type = (meta.get("librarySectionType") or "").lower()
 
         # 1. Media Type Filter: Only process music tracks
         if media_type != "track" and library_type != "artist":

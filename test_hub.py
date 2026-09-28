@@ -137,7 +137,13 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         # Test that missing heartbeats trigger display clear after watchdog timeout
         mgr = HubStateManager("192.168.1.100", clear_delay=0.0, heartbeat_timeout=0.05)
         mgr._push_to_tuneshine = AsyncMock()
-        mgr._clear_tuneshine = AsyncMock()
+        cleared = []
+
+        async def clear_like_http():
+            await asyncio.sleep(0)
+            cleared.append(True)
+
+        mgr._clear_tuneshine = clear_like_http
 
         img = Image.new("RGB", (50, 50), color=(100, 100, 100))
         buf = io.BytesIO()
@@ -157,7 +163,7 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         # 3. Watchdog should have triggered clear
         self.assertFalse(mgr.external_state["is_playing"])
         self.assertIsNone(mgr.active_source)
-        mgr._clear_tuneshine.assert_called_once()
+        self.assertEqual(cleared, [True])
         await mgr.close()
 
     async def test_heartbeat_reset_prevents_timeout(self):
@@ -208,6 +214,49 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         refreshed = await mgr.on_heartbeat("windows")
         self.assertFalse(refreshed)
         await mgr.close()
+
+    async def test_heartbeat_timeout_while_spotify_active(self):
+        mgr = HubStateManager("192.168.1.100", clear_delay=0.0, heartbeat_timeout=0.05)
+        mgr._push_to_tuneshine = AsyncMock()
+        mgr._clear_tuneshine = AsyncMock()
+
+        img = Image.new("RGB", (50, 50), color=(100, 100, 100))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        dummy_img = buf.getvalue()
+        meta = {"artistName": "Artist 1", "albumName": "Album 1", "serviceName": "Windows", "heartbeat": True}
+
+        await mgr.on_external_playing(dummy_img, meta)
+        await mgr.on_spotify_playing("spot1", dummy_img, {"serviceName": "Spotify"})
+        self.assertTrue(await mgr.on_heartbeat("windows"))
+
+        # Watchdog marks the silent client stopped without touching Spotify's display
+        await asyncio.sleep(0.08)
+        self.assertFalse(mgr.external_state["is_playing"])
+        self.assertEqual(mgr.active_source, "spotify")
+        mgr._clear_tuneshine.assert_not_called()
+
+        # Spotify stopping must not fall back to the stale external artwork
+        await mgr.on_spotify_stopped()
+        self.assertIsNone(mgr.active_source)
+        mgr._clear_tuneshine.assert_called_once()
+        await mgr.close()
+
+    async def test_spotify_repeat_poll_keeps_external_display(self):
+        img = Image.new("RGB", (50, 50), color=(100, 100, 100))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        dummy_img = buf.getvalue()
+
+        await self.mgr.on_spotify_playing("spot1", dummy_img, {"serviceName": "Spotify"})
+        await self.mgr.on_external_playing(dummy_img, {"serviceName": "Navidrome"})
+        self.assertEqual(self.mgr.active_source, "external")
+
+        await self.mgr.on_spotify_playing("spot1", dummy_img, {"serviceName": "Spotify"})
+        self.assertEqual(self.mgr.active_source, "external")
+
+        await self.mgr.on_spotify_playing("spot2", dummy_img, {"serviceName": "Spotify"})
+        self.assertEqual(self.mgr.active_source, "spotify")
 
 
 class TestSpotifyClient(unittest.IsolatedAsyncioTestCase):
@@ -349,7 +398,7 @@ class TestPlexWebhook(unittest.TestCase):
         raw_img = self._create_sample_image()
         payload = {
             "event": "media.play",
-            "Account": {"title": "david", "id": 1},
+            "Account": {"title": "user", "id": 1},
             "Player": {"title": "Plexamp"},
             "Metadata": {
                 "type": "track",
@@ -378,7 +427,7 @@ class TestPlexWebhook(unittest.TestCase):
     def test_plex_webhook_stop(self):
         payload = {
             "event": "media.stop",
-            "Account": {"title": "david"},
+            "Account": {"title": "user"},
             "Player": {"title": "Plexamp"},
             "Metadata": {
                 "type": "track",
@@ -398,7 +447,7 @@ class TestPlexWebhook(unittest.TestCase):
         # Episode/Movie payload
         payload = {
             "event": "media.play",
-            "Account": {"title": "david"},
+            "Account": {"title": "user"},
             "Player": {"title": "Plex for Apple TV"},
             "Metadata": {
                 "type": "episode",
@@ -417,17 +466,24 @@ class TestPlexWebhook(unittest.TestCase):
         self.assertEqual(resp.json()["status"], "ignored")
         self.assertIn("non-music", resp.json()["reason"])
 
+    def test_plex_webhook_null_media_type(self):
+        payload = {"event": "media.play", "Metadata": {"type": None, "librarySectionType": None}}
+
+        resp = self.client.post("/webhook/plex", data={"payload": json.dumps(payload)})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "ignored")
+
     def test_plex_webhook_user_filter(self):
         from config import settings
         orig_users = settings.plex_allowed_users
         try:
-            settings.plex_allowed_users = "david,admin"
+            settings.plex_allowed_users = "user,admin"
             raw_img = self._create_sample_image()
 
             # Allowed user
             payload_ok = {
                 "event": "media.play",
-                "Account": {"title": "david"},
+                "Account": {"title": "user"},
                 "Metadata": {"type": "track", "title": "Song"},
             }
             resp_ok = self.client.post(
@@ -463,7 +519,7 @@ class TestPlexWebhook(unittest.TestCase):
             # Allowed library title
             payload_ok = {
                 "event": "media.play",
-                "Account": {"title": "david"},
+                "Account": {"title": "user"},
                 "Metadata": {"type": "track", "librarySectionTitle": "Music", "title": "Song"},
             }
             resp_ok = self.client.post(
@@ -476,7 +532,7 @@ class TestPlexWebhook(unittest.TestCase):
             # Allowed library ID
             payload_id_ok = {
                 "event": "media.play",
-                "Account": {"title": "david"},
+                "Account": {"title": "user"},
                 "Metadata": {"type": "track", "librarySectionID": 4, "title": "Song"},
             }
             resp_id_ok = self.client.post(
@@ -489,7 +545,7 @@ class TestPlexWebhook(unittest.TestCase):
             # Disallowed library
             payload_bad = {
                 "event": "media.play",
-                "Account": {"title": "david"},
+                "Account": {"title": "user"},
                 "Metadata": {"type": "track", "librarySectionTitle": "Audiobooks", "librarySectionID": 9, "title": "Song"},
             }
             resp_bad = self.client.post(
