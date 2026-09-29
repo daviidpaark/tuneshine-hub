@@ -1,6 +1,7 @@
 # Tuneshine Hub
 
 [![CI](https://github.com/daviidpaark/tuneshine-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/daviidpaark/tuneshine-hub/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/daviidpaark/tuneshine-hub)](https://github.com/daviidpaark/tuneshine-hub/releases/latest)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/daviidpaark/tuneshine-hub/pkgs/container/tuneshine-hub)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -60,7 +61,7 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
 
 ## Quick Start
 
-Images are published to `ghcr.io` only for version tags. `latest` points to the newest release; pin a version tag (for example `1.2.3`) to stay on a specific release.
+Images are published to `ghcr.io` only for version tags. `latest` points to the newest release; pin a version tag (for example `1.2.3`) to stay on a specific release. Release notes for each version are on the [Releases](https://github.com/daviidpaark/tuneshine-hub/releases) page.
 
 ### Option A: Docker Compose (Recommended)
 
@@ -225,7 +226,7 @@ To contribute, develop, or build from source:
 ## AI Disclosure & Personal Project Note
 
 > [!NOTE]
-> This project was developed as a personal home lab tool with the assistance of **Google Antigravity (Gemini Flash)** AI pair programming. It is shared publicly for the benefit of the community and other Tuneshine owners. Contributions, feedback, and issue reports are always welcome!
+> This project was developed as a personal home lab tool with the assistance of **Google Antigravity (Gemini Flash)** and **Claude Code (Claude Opus)** AI pair programming. It is shared publicly for the benefit of the community and other Tuneshine owners. Contributions, feedback, and issue reports are always welcome!
 
 ---
 

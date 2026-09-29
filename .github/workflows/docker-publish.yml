@@ -25,6 +25,20 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
+      - name: Verify tag matches app version and CHANGELOG
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          version=$(sed -nE 's/^\s*version="([^"]+)".*/\1/p' main.py)
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match main.py version $version"
+            exit 1
+          fi
+          if ! grep -qF "## [$version]" CHANGELOG.md; then
+            echo "::error::No CHANGELOG.md section for $version"
+            exit 1
+          fi
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v7
         with:
@@ -112,7 +126,7 @@ jobs:
           git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
           title=$(git tag -l --format='%(contents:subject)' "$TAG" | sed -nE 's/^Release (v[^:]+): (.)/\1 - \u\2/p')
           title=${title:-$TAG}
-          awk -v v="## [${TAG#v}]" 'index($0, v) == 1 {f = 1; next} f && /^## \[/ {exit} f && !/^---$/' CHANGELOG.md > notes.md
+          awk -v v="## [${TAG#v}]" 'index($0, v) == 1 {f = 1; next} f && /^## \[/ {exit} f && !/^---\r?$/' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then
             echo "::error::No CHANGELOG.md section for $TAG"
             exit 1
