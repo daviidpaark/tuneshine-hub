@@ -16,7 +16,7 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
 
 - **[tuneshine-hub](https://github.com/daviidpaark/tuneshine-hub)** *(This repository)*: Central Docker hub service. Manages 24/7 background Spotify tracking, converts raw artwork to 64×64 WebP, arbitrates multi-source priority, and drives your physical Tuneshine device.
 - **[tuneshine-windows](https://github.com/daviidpaark/tuneshine-windows)**: Standalone Windows System Tray desktop companion. Hooks into Windows Media Controls (SMTC) to capture and stream real-time playback from Spotify, Apple Music, YouTube, Tidal, and local players to Tuneshine Hub (or directly to a physical Tuneshine device).
-- **[tuneshine-navidrome](https://github.com/daviidpaark/tuneshine-navidrome)**: Official Navidrome plugin. Streams live playback and cover art from your Navidrome music server to Tuneshine Hub (or directly to a physical Tuneshine device).
+- **[tuneshine-navidrome](https://github.com/daviidpaark/tuneshine-navidrome)**: Navidrome plugin. Streams live playback and cover art from your Navidrome music server to Tuneshine Hub (or directly to a physical Tuneshine device).
 
 ---
 
@@ -24,7 +24,7 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
 
 - **Drop-in Hardware API:** Exposes `POST /image` and `DELETE /image` matching the real Tuneshine hardware HTTP API.
 - **Latest-Event-Wins Priority Arbitration:**
-   - Whichever music source (Navidrome, Plexamp, Tuneshine Windows Desktop Companion, or Spotify) starts or changes tracks most recently claims the display.
+  - Whichever music source (Navidrome, Plexamp, Tuneshine Windows Desktop Companion, or Spotify) starts or changes tracks most recently claims the display.
   - When one service pauses or stops, the hub seamlessly falls back to the other active music stream before clearing to idle.
 - **Standalone 24/7 Spotify Engine:** Polls Spotify Web API asynchronously in the background with automatic token refreshing, rate-limit backoff, and CDN image downscaling.
 - **Plex & Plexamp Webhook Support:** Instant, event-driven track display via Plex Media Server webhooks with multi-criteria user, library, and player filtering.
@@ -126,6 +126,7 @@ Tuneshine Hub includes an Unraid Community Applications XML template ([`tuneshin
 | `TUNESHINE_HOST` | **Yes** | — | IP or hostname of your physical Tuneshine device (e.g. `192.168.1.100` or `tuneshine.local`) |
 | `PORT` | No | `8585` | Port for the Hub HTTP server |
 | `CLEAR_DELAY` | No | `2.0` | Debounce delay in seconds before clearing display or switching sources (prevents screen flicker during seeks & track transitions) |
+| `HEARTBEAT_TIMEOUT` | No | `90.0` | Seconds without a heartbeat before a Windows companion session is treated as stopped. `0` disables the watchdog |
 | `SPOTIFY_ENABLED` | No | `false` | Enable Spotify Web API polling |
 | `SPOTIFY_CLIENT_ID` | Conditional | — | Spotify Developer Client ID (required if Spotify is enabled) |
 | `SPOTIFY_CLIENT_SECRET` | Conditional | — | Spotify Developer Client Secret (required if Spotify is enabled) |
@@ -138,7 +139,7 @@ Tuneshine Hub includes an Unraid Community Applications XML template ([`tuneshin
 | `PLEX_ALLOWED_USERS` | No | — | Comma-separated list of allowed Plex usernames or IDs (e.g. `user,admin`). Empty allows all users |
 | `PLEX_ALLOWED_LIBRARIES` | No | — | Comma-separated list of allowed music library names or IDs (e.g. `Music,Lossless`). Empty allows all music libraries |
 | `PLEX_ALLOWED_PLAYERS` | No | — | Comma-separated list of allowed player clients (e.g. `Plexamp`). Empty allows any Plex player |
-| `PLEX_SERVER_URL` | No | — | Base URL of Plex Media Server (e.g. `http://192.168.1.50:32400`) to fetch remote cover art if not attached in webhook |
+| `PLEX_URL` / `PLEX_SERVER_URL` | No | — | Base URL of Plex Media Server (e.g. `http://192.168.1.50:32400`) to fetch remote cover art if not attached in webhook |
 | `PLEX_TOKEN` | No | — | Plex authentication token (`X-Plex-Token`) for downloading high-res artwork from PMS |
 | `PLEX_SERVICENAME` | No | `Plexamp` | Label displayed on Tuneshine for Plexamp tracks |
 
@@ -187,8 +188,9 @@ In [Tuneshine Windows](https://github.com/daviidpaark/tuneshine-windows):
 | :--- | :--- | :--- |
 | `POST` | `/image` | Multipart artwork upload (`image` & `metadata`). Drop-in replacement for hardware API. |
 | `DELETE` | `/image` | Clears display or reverts to active Spotify playback. |
+| `POST` | `/heartbeat` | Keeps an active Windows companion session alive (also aliased at `PUT /image`). |
 | `POST` | `/webhook/plex` | Plex Media Server webhook listener (also aliased at `/plex`). |
-| `GET` | `/health` | Health check endpoint returning device connection status. |
+| `GET` | `/health` | Health check returning the configured Tuneshine host. |
 | `GET` | `/state` | Returns active playback source and playback status. |
 | `GET` | `/docs` | Interactive Swagger / OpenAPI documentation UI. |
 
