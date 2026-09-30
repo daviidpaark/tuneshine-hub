@@ -28,8 +28,8 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
   - When one service pauses or stops, the hub seamlessly falls back to the other active music stream before clearing to idle.
 - **Standalone 24/7 Spotify Engine:** Polls Spotify Web API asynchronously in the background with automatic token refreshing, rate-limit backoff, and CDN image downscaling.
 - **Plex & Plexamp Webhook Support:** Instant, event-driven track display via Plex Media Server webhooks with multi-criteria user, library, and player filtering.
-- **Universal Image Processing:** Automatically converts incoming JPEG/PNG/WebP images to 64×64 lossless WebP using Pillow.
-- **Artwork Hash Deduplication:** Eliminates redundant uploads for consecutive tracks with identical album artwork.
+- **Universal Image Processing:** Automatically center-crops incoming JPEG/PNG/WebP images and converts them to 64×64 lossless WebP using Pillow.
+- **Artwork Hash Deduplication:** Eliminates redundant uploads for consecutive tracks with identical album artwork, sending a metadata-only update so the track name stays current.
 
 ---
 

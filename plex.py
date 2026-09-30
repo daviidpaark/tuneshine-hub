@@ -98,7 +98,7 @@ class PlexWebhookHandler:
         return {
             "artistName": artist_name,
             "albumName": album_name,
-            "trackTitle": track_title,
+            "trackName": track_title,
             "serviceName": service_name,
             "itemId": item_id,
         }

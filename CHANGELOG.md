@@ -5,6 +5,19 @@ All notable changes to the `tuneshine-hub` central service will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-09-30
+
+### Added
+- **Track Names:** Spotify pushes now include `trackName`, and client metadata is forwarded with it.
+- **Metadata-Only Updates:** When consecutive tracks share artwork, the hub sends a JSON `POST /image` with only the new metadata instead of skipping the update, so the track name no longer goes stale. Older firmware that answers `409` falls back to a full upload.
+
+### Fixed
+- **Plex Track Name:** Plex metadata used `trackTitle`, which the device ignores; it now sends `trackName`.
+- **Non-Square Artwork:** Artwork is center-cropped to a square before resizing instead of being stretched.
+- **Client-Only Metadata:** Only device `TrackMetadata` fields are forwarded, so flags such as `heartbeat` no longer reach the device or trigger extra updates.
+
+---
+
 ## [0.2.4] - 2026-09-28
 
 ### Fixed

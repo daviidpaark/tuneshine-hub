@@ -29,12 +29,92 @@ class TestImageUtils(unittest.TestCase):
         self.assertEqual(out_img.size, (64, 64))
         self.assertEqual(out_img.format, "WEBP")
 
+    def test_non_square_image_is_center_cropped(self):
+        # 128x64: red 32px side bands around a green 64x64 center
+        img = Image.new("RGB", (128, 64), color=(255, 0, 0))
+        img.paste((0, 255, 0), (32, 0, 96, 64))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+
+        out_img = Image.open(io.BytesIO(process_image_to_webp(buf.getvalue())))
+        self.assertEqual(out_img.size, (64, 64))
+        self.assertEqual(out_img.getpixel((0, 32))[:3], (0, 255, 0))
+        self.assertEqual(out_img.getpixel((63, 32))[:3], (0, 255, 0))
+
     def test_image_hash_consistency(self):
         data1 = b"test_image_data_123"
         data2 = b"test_image_data_123"
         data3 = b"different_data"
         self.assertEqual(compute_image_hash(data1), compute_image_hash(data2))
         self.assertNotEqual(compute_image_hash(data1), compute_image_hash(data3))
+
+
+class TestTuneshinePush(unittest.IsolatedAsyncioTestCase):
+    """Exercises _push_to_tuneshine against a mocked device HTTP client."""
+
+    async def asyncSetUp(self):
+        self.mgr = HubStateManager("192.168.1.100")
+        self.webp = process_image_to_webp(self._png((10, 20, 30)))
+
+    async def asyncTearDown(self):
+        await self.mgr.close()
+
+    @staticmethod
+    def _png(color):
+        buf = io.BytesIO()
+        Image.new("RGB", (50, 50), color=color).save(buf, format="PNG")
+        return buf.getvalue()
+
+    def _mock_post(self, *status_codes):
+        responses = [MagicMock(status_code=code, text="") for code in status_codes]
+        return patch.object(self.mgr._http, "post", new=AsyncMock(side_effect=responses))
+
+    async def test_new_artwork_uploads_multipart_with_track_name(self):
+        meta = {"trackName": "Song 1", "artistName": "Artist", "albumName": "Album", "heartbeat": True}
+        with self._mock_post(200) as post:
+            await self.mgr._push_to_tuneshine(self.webp, meta)
+
+        post.assert_awaited_once()
+        files = post.await_args.kwargs["files"]
+        self.assertEqual(files["image"], ("cover.webp", self.webp, "image/webp"))
+        sent = json.loads(files["metadata"][1])
+        self.assertEqual(sent, {"trackName": "Song 1", "artistName": "Artist", "albumName": "Album"})
+
+    async def test_same_artwork_new_track_sends_metadata_only(self):
+        with self._mock_post(200, 200) as post:
+            await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 1", "albumName": "Album"})
+            await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 2", "albumName": "Album"})
+
+        self.assertEqual(post.await_count, 2)
+        second = post.await_args_list[1].kwargs
+        self.assertNotIn("files", second)
+        self.assertEqual(second["json"], {"trackName": "Song 2", "albumName": "Album"})
+        self.assertEqual(self.mgr.last_pushed_metadata["trackName"], "Song 2")
+
+    async def test_same_artwork_same_metadata_is_skipped(self):
+        meta = {"trackName": "Song 1", "albumName": "Album"}
+        with self._mock_post(200) as post:
+            await self.mgr._push_to_tuneshine(self.webp, meta)
+            await self.mgr._push_to_tuneshine(self.webp, {**meta, "heartbeat": True})
+
+        post.assert_awaited_once()
+
+    async def test_metadata_only_409_falls_back_to_full_upload(self):
+        with self._mock_post(200, 409, 200) as post:
+            await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 1"})
+            await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 2"})
+
+        self.assertEqual(post.await_count, 3)
+        self.assertIn("files", post.await_args_list[2].kwargs)
+        self.assertEqual(self.mgr.last_pushed_metadata, {"trackName": "Song 2"})
+
+    async def test_clear_resets_metadata_cache(self):
+        with self._mock_post(200):
+            await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 1"})
+        with patch.object(self.mgr._http, "delete", new=AsyncMock(return_value=MagicMock(status_code=200))):
+            await self.mgr._clear_tuneshine()
+        self.assertIsNone(self.mgr.last_uploaded_hash)
+        self.assertIsNone(self.mgr.last_pushed_metadata)
 
 
 class TestStateManager(unittest.IsolatedAsyncioTestCase):
@@ -421,7 +501,7 @@ class TestPlexWebhook(unittest.TestCase):
         self.assertEqual(data["status"], "playing")
         self.assertEqual(data["metadata"]["artistName"], "Artist Name")
         self.assertEqual(data["metadata"]["albumName"], "Album Title")
-        self.assertEqual(data["metadata"]["trackTitle"], "Track Title")
+        self.assertEqual(data["metadata"]["trackName"], "Track Title")
         self.assertEqual(data["metadata"]["serviceName"], "Plexamp")
 
     def test_plex_webhook_stop(self):

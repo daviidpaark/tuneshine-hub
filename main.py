@@ -81,6 +81,7 @@ async def spotify_polling_worker():
                     image_data = await spotify_client.fetch_image(track.image_url)
                     if image_data:
                         metadata = {
+                            "trackName": track.name,
                             "artistName": track.artist,
                             "albumName": track.album,
                             "serviceName": settings.spotify_servicename,
@@ -135,7 +136,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination service for Tuneshine ecosystem",
-    version="0.2.4",
+    version="0.2.5",
     lifespan=lifespan,
 )
 

@@ -7,6 +7,13 @@ from image_utils import process_image_to_webp, compute_image_hash
 
 logger = logging.getLogger("tuneshine-hub.state")
 
+# TrackMetadata fields forwarded to the device; client-only flags such as "heartbeat" are dropped
+DEVICE_METADATA_KEYS = ("trackName", "artistName", "albumName", "serviceName", "itemId")
+
+
+def device_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    return {k: metadata[k] for k in DEVICE_METADATA_KEYS if metadata and metadata.get(k)}
+
 
 class HubStateManager:
     def __init__(self, tuneshine_host: str, clear_delay: float = 2.0, heartbeat_timeout: float = 90.0):
@@ -18,6 +25,7 @@ class HubStateManager:
 
         self.active_source: Optional[str] = None  # "external", "spotify", or None
         self.last_uploaded_hash: Optional[str] = None
+        self.last_pushed_metadata: Optional[Dict[str, Any]] = None
         self._pending_clear_task: Optional[asyncio.Task] = None
         self._heartbeat_watchdog_task: Optional[asyncio.Task] = None
 
@@ -215,25 +223,53 @@ class HubStateManager:
             logger.warning("TUNESHINE_HOST not set; skipping upload")
             return
 
+        meta = device_metadata(metadata)
         img_hash = compute_image_hash(webp_data)
         if not force and self.last_uploaded_hash == img_hash:
+            if meta != self.last_pushed_metadata:
+                # Same artwork (e.g. next track on the same album): update metadata without re-uploading
+                await self._push_metadata_only(webp_data, meta, img_hash)
             return
 
+        await self._upload_image(webp_data, meta, img_hash)
+
+    @staticmethod
+    def _describe(meta: Dict[str, Any]) -> str:
+        track = f"{meta.get('trackName')} - " if meta.get("trackName") else ""
+        return f"[{meta.get('serviceName', 'Media')}]: {track}{meta.get('artistName')} - {meta.get('albumName')}"
+
+    async def _upload_image(self, webp_data: bytes, meta: Dict[str, Any], img_hash: str):
         url = f"http://{self.tuneshine_host}/image"
         files = {
             "image": ("cover.webp", webp_data, "image/webp"),
-            "metadata": (None, json.dumps(metadata), "application/json"),
+            "metadata": (None, json.dumps(meta), "application/json"),
         }
 
         try:
             resp = await self._http.post(url, files=files)
             if 200 <= resp.status_code < 300:
                 self.last_uploaded_hash = img_hash
-                logger.info(f"Pushed to Tuneshine [{metadata.get('serviceName', 'Media')}]: {metadata.get('artistName')} - {metadata.get('albumName')}")
+                self.last_pushed_metadata = meta
+                logger.info(f"Pushed to Tuneshine {self._describe(meta)}")
             else:
                 logger.warning(f"POST /image to Tuneshine returned {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Error posting image to Tuneshine ({url}): {e}")
+
+    async def _push_metadata_only(self, webp_data: bytes, meta: Dict[str, Any], img_hash: str):
+        url = f"http://{self.tuneshine_host}/image"
+        try:
+            resp = await self._http.post(url, json=meta)
+            if 200 <= resp.status_code < 300:
+                self.last_pushed_metadata = meta
+                logger.info(f"Updated Tuneshine metadata {self._describe(meta)}")
+            elif resp.status_code == 409:
+                # Older firmware rejects metadata-only updates when it holds no local image
+                await self._upload_image(webp_data, meta, img_hash)
+            else:
+                logger.warning(f"Metadata-only POST /image returned {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error posting metadata to Tuneshine ({url}): {e}")
 
     async def _clear_tuneshine(self):
         if not self.is_configured:
@@ -244,6 +280,7 @@ class HubStateManager:
             resp = await self._http.delete(url)
             if 200 <= resp.status_code < 300:
                 self.last_uploaded_hash = None
+                self.last_pushed_metadata = None
                 logger.info("Cleared Tuneshine display")
             else:
                 logger.warning(f"DELETE /image returned {resp.status_code}: {resp.text}")
