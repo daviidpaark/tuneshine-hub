@@ -8,6 +8,10 @@ import httpx
 logger = logging.getLogger("tuneshine-hub.spotify")
 
 
+class SpotifyPollError(Exception):
+    """The currently-playing state could not be determined."""
+
+
 @dataclass
 class SpotifyTrack:
     id: str
@@ -105,31 +109,42 @@ class SpotifyClient:
         logger.warning(f"Rate limited by Spotify API (HTTP 429). Backing off for {retry_after}s.")
 
     async def get_currently_playing(self) -> Optional[SpotifyTrack]:
+        """
+        Returns the playing track, or None when nothing is playing.
+        Raises SpotifyPollError when the state is unknown (network, auth, rate limit, or server error),
+        so a failed poll is never mistaken for playback stopping.
+        """
         if self.is_rate_limited:
-            return None
+            raise SpotifyPollError("rate limited")
 
         token = await self.get_access_token()
         if not token:
-            return None
+            raise SpotifyPollError("no access token")
 
         try:
             resp = await self._http.get(
                 "https://api.spotify.com/v1/me/player/currently-playing",
                 headers={"Authorization": f"Bearer {token}"},
             )
+        except Exception as e:
+            raise SpotifyPollError(f"request failed: {e}") from e
 
-            if resp.status_code == 401:
-                # Token invalidated/expired
-                self._access_token = None
-                return None
+        if resp.status_code == 401:
+            # Token invalidated/expired
+            self._access_token = None
+            raise SpotifyPollError("access token rejected (HTTP 401)")
 
-            if resp.status_code == 429:
-                self._handle_rate_limit(resp)
-                return None
+        if resp.status_code == 429:
+            self._handle_rate_limit(resp)
+            raise SpotifyPollError("rate limited (HTTP 429)")
 
-            if resp.status_code == 204 or resp.status_code < 200 or resp.status_code >= 300:
-                return None
+        if resp.status_code == 204:
+            return None
 
+        if resp.status_code < 200 or resp.status_code >= 300:
+            raise SpotifyPollError(f"HTTP {resp.status_code}")
+
+        try:
             data = resp.json()
             if not data.get("is_playing") or not data.get("item"):
                 return None
@@ -162,8 +177,7 @@ class SpotifyClient:
             )
 
         except Exception as e:
-            logger.error(f"Error fetching Spotify currently playing: {e}")
-            return None
+            raise SpotifyPollError(f"invalid response: {e}") from e
 
     async def fetch_image(self, url: str) -> Optional[bytes]:
         try:

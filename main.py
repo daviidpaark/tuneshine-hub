@@ -9,8 +9,8 @@ from fastapi import FastAPI, UploadFile, File, Form, Response, status
 from fastapi.responses import JSONResponse
 
 from config import settings
-from state_manager import HubStateManager
-from spotify import SpotifyClient
+from state_manager import HubStateManager, DEFAULT_CLIENT
+from spotify import SpotifyClient, SpotifyPollError
 from plex import PlexWebhookHandler
 
 logging.basicConfig(
@@ -43,6 +43,9 @@ spotify_client = SpotifyClient(
     refresh_token=settings.spotify_refresh_token,
 )
 plex_handler = PlexWebhookHandler(settings)
+PLEX_CLIENT = "plex"
+# Seconds of continuous Spotify poll failures before Spotify is treated as stopped
+SPOTIFY_FAILURE_STOP_AFTER = 60.0
 
 
 async def spotify_polling_worker():
@@ -58,6 +61,8 @@ async def spotify_polling_worker():
 
     last_active_time = 0.0
     was_idle = True
+    failing_since: Optional[float] = None
+    failure_stopped = False
 
     while True:
         sleep_duration = settings.spotify_poll_interval
@@ -68,7 +73,25 @@ async def spotify_polling_worker():
                 await asyncio.sleep(cooldown)
                 continue
 
-            track = await spotify_client.get_currently_playing()
+            try:
+                track = await spotify_client.get_currently_playing()
+            except SpotifyPollError as e:
+                # Unknown state: keep the current display through short failures, but treat a failure that
+                # outlasts SPOTIFY_FAILURE_STOP_AFTER (revoked token, long outage) as a stop so it cannot freeze
+                now = time.time()
+                if failing_since is None:
+                    failing_since = now
+                    logger.warning(f"Spotify poll failed, keeping current state until it recovers: {e}")
+                elif not failure_stopped and now - failing_since >= SPOTIFY_FAILURE_STOP_AFTER:
+                    logger.warning(f"Spotify polling has failed for {SPOTIFY_FAILURE_STOP_AFTER:.0f}s; treating Spotify as stopped: {e}")
+                    failure_stopped = True
+                    await state_mgr.on_spotify_stopped()
+                await asyncio.sleep(settings.spotify_idle_poll_interval if was_idle else settings.spotify_poll_interval)
+                continue
+            if failing_since is not None:
+                logger.info("Spotify polling recovered")
+                failing_since = None
+                failure_stopped = False
             now = time.time()
 
             if track:
@@ -88,7 +111,7 @@ async def spotify_polling_worker():
                             "itemId": track.id,
                         }
                         await state_mgr.on_spotify_playing(track.id, image_data, metadata)
-            elif not spotify_client.is_rate_limited:
+            else:
                 await state_mgr.on_spotify_stopped()
 
             # Determine polling interval based on idle duration
@@ -136,7 +159,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination service for Tuneshine ecosystem",
-    version="0.2.6",
+    version="0.2.7",
     lifespan=lifespan,
 )
 
@@ -145,10 +168,12 @@ app = FastAPI(
 async def post_image(
     image: UploadFile = File(...),
     metadata: Optional[str] = Form(None),
+    source: str = DEFAULT_CLIENT,
 ):
     """
     Standard Tuneshine drop-in endpoint.
     Accepts multipart form-data with 'image' and 'metadata'.
+    The optional 'source' query parameter (e.g. ?source=windows) gives each client its own playback slot.
     """
     try:
         raw_image = await image.read()
@@ -165,28 +190,28 @@ async def post_image(
         except Exception:
             parsed_meta = {}
 
-    await state_mgr.on_external_playing(raw_image, parsed_meta)
+    await state_mgr.on_external_playing(raw_image, parsed_meta, client=source or DEFAULT_CLIENT)
     return Response(status_code=status.HTTP_200_OK)
 
 
 @app.delete("/image", summary="Clear display")
-async def delete_image():
+async def delete_image(source: str = DEFAULT_CLIENT):
     """
     Standard Tuneshine drop-in endpoint.
-    Clears the display (or reverts to active Spotify session if available).
+    Stops the given client; the display falls back to another playing client or Spotify, or clears.
     """
-    await state_mgr.on_external_stopped()
+    await state_mgr.on_external_stopped(client=source or DEFAULT_CLIENT)
     return Response(status_code=status.HTTP_200_OK)
 
 
 @app.post("/heartbeat", summary="Client playback heartbeat")
 @app.put("/image", summary="Client playback heartbeat (alias)")
-async def heartbeat(source: Optional[str] = "windows"):
+async def heartbeat(source: Optional[str] = DEFAULT_CLIENT):
     """
     Periodic heartbeat from active desktop companion or client.
     Resets the watchdog timer to prevent display from freezing if client abruptly disconnects.
     """
-    refreshed = await state_mgr.on_heartbeat(source=source or "windows")
+    refreshed = await state_mgr.on_heartbeat(source=source or DEFAULT_CLIENT)
     return {"status": "ok" if refreshed else "ignored", "active_source": state_mgr.active_source}
 
 
@@ -229,11 +254,11 @@ async def plex_webhook(
             logger.warning("Plex webhook: No artwork found in webhook attachment or PMS")
             return JSONResponse(status_code=200, content={"status": "ignored", "reason": "no artwork available"})
 
-        await state_mgr.on_external_playing(raw_image, meta)
+        await state_mgr.on_external_playing(raw_image, meta, client=PLEX_CLIENT)
         return JSONResponse(status_code=200, content={"status": "playing", "metadata": meta})
 
     elif event in ("media.pause", "media.stop"):
-        await state_mgr.on_external_stopped()
+        await state_mgr.on_external_stopped(client=PLEX_CLIENT)
         return JSONResponse(status_code=200, content={"status": "stopped"})
 
     return JSONResponse(status_code=200, content={"status": "ignored", "reason": f"unhandled event '{event}'"})
@@ -252,7 +277,8 @@ async def health_check():
 async def get_state():
     return {
         "active_source": state_mgr.active_source,
-        "external_playing": state_mgr.external_state["is_playing"],
+        "active_client": state_mgr.active_client,
+        "external_playing": any(c["is_playing"] for c in state_mgr.clients.values()),
         "spotify_playing": state_mgr.spotify_state["is_playing"],
         "tuneshine_host": settings.clean_tuneshine_host,
     }

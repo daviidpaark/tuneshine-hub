@@ -24,7 +24,7 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
 
 - **Drop-in Hardware API:** Exposes `POST /image` and `DELETE /image` matching the real Tuneshine hardware HTTP API.
 - **Priority Arbitration with Spotify Fallback:**
-  - Among client sources (Navidrome, Plexamp, Tuneshine Windows Desktop Companion), whichever starts or changes tracks most recently claims the display.
+  - Among client sources (Navidrome, Plexamp, Tuneshine Windows Desktop Companion), whichever starts or changes tracks most recently claims the display. Each client has its own playback slot, so one client pausing never clears another that is still playing.
   - Spotify is the fallback: it shows only while no client source is playing, so Spotify desktop on a PC running the Windows companion is uploaded once, not twice.
   - When one service pauses or stops, the hub seamlessly falls back to the other active music stream before clearing to idle.
 - **Standalone 24/7 Spotify Engine:** Polls Spotify Web API asynchronously in the background with automatic token refreshing, rate-limit backoff, and CDN image downscaling.
@@ -187,9 +187,9 @@ In [Tuneshine Windows](https://github.com/daviidpaark/tuneshine-windows):
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `POST` | `/image` | Multipart artwork upload (`image` & `metadata`). Drop-in replacement for hardware API. |
-| `DELETE` | `/image` | Clears display or reverts to active Spotify playback. |
-| `POST` | `/heartbeat` | Keeps an active Windows companion session alive (also aliased at `PUT /image`). |
+| `POST` | `/image` | Multipart artwork upload (`image` & `metadata`). Drop-in replacement for hardware API. Optional `?source=<client>` query parameter gives each client its own playback slot. |
+| `DELETE` | `/image` | Stops the calling client (same optional `?source=`); the display falls back to another playing client, then Spotify, or clears. |
+| `POST` | `/heartbeat` | Keeps a client session alive (same optional `?source=`; also aliased at `PUT /image`). Returns `ignored` when the hub has no playing session for that client, so the client should resend its track. |
 | `POST` | `/webhook/plex` | Plex Media Server webhook listener (also aliased at `/plex`). |
 | `GET` | `/health` | Health check returning the configured Tuneshine host. |
 | `GET` | `/state` | Returns active playback source and playback status. |

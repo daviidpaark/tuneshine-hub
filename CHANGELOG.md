@@ -5,6 +5,19 @@ All notable changes to the `tuneshine-hub` central service will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-09-30
+
+### Fixed
+- **Spotify Poll Errors:** A failed Spotify poll (timeout, 5xx, rejected token, or rate limit) was treated as playback stopping, so one API hiccup cleared the display and the next poll uploaded the artwork again. Poll errors now keep the current state, and the failure and recovery are logged once. Failures that last longer than 60 seconds (for example a revoked refresh token) are treated as Spotify stopping, so the display cannot freeze on the last track.
+- **Shared Client Slot:** All external clients shared one playback slot, so a stop from one (for example Plexamp pausing on a phone) cleared the display while another (the Windows companion) was still playing. Each client now has its own slot, identified by an optional `?source=` query parameter on `POST`/`DELETE /image` and `/heartbeat` (Plex webhooks use their own slot). When the displayed client stops, the hub falls back to the most recent client still playing, then Spotify. Clients that send no `source` share the `default` slot as before. A held Spotify update or an undecodable cover no longer cancels the stopped client's pending clear, which could leave its artwork on the display.
+- **Pinned Dependencies:** The Docker image and CI now install with `requirements-lock.txt` as constraints instead of unpinned `requirements.txt` ranges, so releases are reproducible.
+- **Missing Settings:** `HEARTBEAT_TIMEOUT` (and `CLEAR_DELAY` in Compose) are now listed in `.env.example`, `docker-compose.yml`, and the Unraid template.
+
+### Changed
+- `GET /state` now also reports `active_client`, and `external_playing` is true when any client is playing.
+
+---
+
 ## [0.2.6] - 2026-09-30
 
 ### Changed

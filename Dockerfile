@@ -7,9 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies, pinned to the lock file (platform-only packages such as uvloop stay unpinned)
+COPY requirements.txt requirements-lock.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -c requirements-lock.txt
 
 # Create a non-root user and group
 RUN groupadd -g 10001 appuser && \

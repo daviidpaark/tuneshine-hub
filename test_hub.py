@@ -4,12 +4,13 @@ import asyncio
 import io
 import time
 import json
+import httpx
 from PIL import Image
 from fastapi.testclient import TestClient
 
 from image_utils import process_image_to_webp, compute_image_hash
-from state_manager import HubStateManager
-from spotify import SpotifyClient
+from state_manager import HubStateManager, DEFAULT_CLIENT
+from spotify import SpotifyClient, SpotifyPollError
 from main import app, state_mgr
 
 
@@ -117,6 +118,94 @@ class TestTuneshinePush(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.mgr.last_pushed_metadata)
 
 
+class TestPerClientSlots(unittest.IsolatedAsyncioTestCase):
+    """Each external client (Windows, Navidrome, Plex) has its own playback slot."""
+
+    async def asyncSetUp(self):
+        self.mgr = HubStateManager("192.168.1.100", clear_delay=0.0)
+        self.mgr._push_to_tuneshine = AsyncMock()
+        self.mgr._clear_tuneshine = AsyncMock()
+        buf = io.BytesIO()
+        Image.new("RGB", (50, 50), color=(9, 9, 9)).save(buf, format="PNG")
+        self.img = buf.getvalue()
+
+    async def asyncTearDown(self):
+        await self.mgr.close()
+
+    async def test_stop_from_other_client_keeps_display(self):
+        await self.mgr.on_external_playing(self.img, {"trackName": "Phone"}, client="plex")
+        await self.mgr.on_external_playing(self.img, {"trackName": "PC"}, client="windows")
+        self.assertEqual(self.mgr.active_client, "windows")
+
+        # Plexamp pausing on the phone must not clear the PC's display
+        await self.mgr.on_external_stopped(client="plex")
+        self.assertEqual(self.mgr.active_client, "windows")
+        self.mgr._clear_tuneshine.assert_not_called()
+
+    async def test_owner_stop_falls_back_to_other_playing_client(self):
+        await self.mgr.on_external_playing(self.img, {"trackName": "Phone"}, client="plex")
+        await self.mgr.on_external_playing(self.img, {"trackName": "PC"}, client="windows")
+
+        await self.mgr.on_external_stopped(client="windows")
+        self.assertEqual(self.mgr.active_source, "external")
+        self.assertEqual(self.mgr.active_client, "plex")
+        self.assertEqual(self.mgr._push_to_tuneshine.await_args.args[1], {"trackName": "Phone"})
+        self.mgr._clear_tuneshine.assert_not_called()
+
+        await self.mgr.on_external_stopped(client="plex")
+        self.assertIsNone(self.mgr.active_source)
+        self.mgr._clear_tuneshine.assert_awaited_once()
+
+    async def test_heartbeat_is_per_client(self):
+        await self.mgr.on_external_playing(self.img, {"trackName": "PC", "heartbeat": True}, client="windows")
+        self.assertTrue(await self.mgr.on_heartbeat("windows"))
+        self.assertFalse(await self.mgr.on_heartbeat("navidrome"))
+
+    async def test_unknown_client_stop_is_ignored(self):
+        await self.mgr.on_external_playing(self.img, {"trackName": "PC"}, client="windows")
+        await self.mgr.on_external_stopped(client="navidrome")
+        self.assertEqual(self.mgr.active_client, "windows")
+        self.mgr._clear_tuneshine.assert_not_called()
+
+    async def test_held_spotify_event_keeps_owner_pending_clear(self):
+        mgr = HubStateManager("192.168.1.100", clear_delay=0.05)
+        mgr._push_to_tuneshine = AsyncMock()
+        mgr._clear_tuneshine = AsyncMock()
+        await mgr.on_external_playing(self.img, {"trackName": "Phone"}, client="plex")
+        await mgr.on_external_playing(self.img, {"trackName": "PC"}, client="windows")
+
+        # Windows stops, then Spotify changes track while Plex still plays
+        await mgr.on_external_stopped(client="windows")
+        await mgr.on_spotify_playing("sp1", self.img, {"trackName": "Held"})
+        await asyncio.sleep(0.3)
+
+        # The pending stop still resolved to Plex instead of leaving Windows' art up
+        self.assertEqual(mgr.active_client, "plex")
+        self.assertEqual(mgr._push_to_tuneshine.await_args.args[1], {"trackName": "Phone"})
+        await mgr.close()
+
+    async def test_undecodable_image_keeps_owner_pending_clear(self):
+        mgr = HubStateManager("192.168.1.100", clear_delay=0.05)
+        mgr._push_to_tuneshine = AsyncMock()
+        mgr._clear_tuneshine = AsyncMock()
+        await mgr.on_external_playing(self.img, {"trackName": "PC"}, client="windows")
+        await mgr.on_external_stopped(client="windows")
+
+        await mgr.on_external_playing(b"not an image", {"trackName": "Broken"}, client="navidrome")
+        await asyncio.sleep(0.3)
+
+        self.assertNotIn("navidrome", mgr.clients)
+        self.assertIsNone(mgr.active_source)
+        mgr._clear_tuneshine.assert_awaited_once()
+        await mgr.close()
+
+    async def test_client_table_is_bounded(self):
+        for i in range(20):
+            await self.mgr.on_external_playing(self.img, {"trackName": str(i)}, client=f"c{i}")
+            await self.mgr.on_external_stopped(client=f"c{i}")
+        self.assertLessEqual(len(self.mgr.clients), 8)
+
+
 class TestStateManager(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.mgr = HubStateManager("192.168.1.100", clear_delay=0.0)
@@ -137,7 +226,7 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         # 1. Navidrome starts playing
         await self.mgr.on_external_playing(dummy_img, meta1)
         self.assertEqual(self.mgr.active_source, "external")
-        self.assertTrue(self.mgr.external_state["is_playing"])
+        self.assertTrue(self.mgr.clients[DEFAULT_CLIENT]["is_playing"])
 
         # 2. Spotify starts playing -> held as fallback, no upload
         await self.mgr.on_spotify_playing("spot1", dummy_img, meta2)
@@ -148,12 +237,12 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         # 3. Spotify stops -> Navidrome keeps the display
         await self.mgr.on_spotify_stopped()
         self.assertEqual(self.mgr.active_source, "external")
-        self.assertTrue(self.mgr.external_state["is_playing"])
+        self.assertTrue(self.mgr.clients[DEFAULT_CLIENT]["is_playing"])
 
         # 4. Navidrome stops -> Display clears to idle
         await self.mgr.on_external_stopped()
         self.assertIsNone(self.mgr.active_source)
-        self.assertFalse(self.mgr.external_state["is_playing"])
+        self.assertFalse(self.mgr.clients[DEFAULT_CLIENT]["is_playing"])
         self.mgr._clear_tuneshine.assert_called()
 
     async def test_spotify_fallback_and_external_takeover(self):
@@ -226,11 +315,11 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         await mgr.on_external_stopped()
 
         # Before delay completes, display has not cleared
-        self.assertFalse(mgr.external_state["is_playing"])
+        self.assertFalse(mgr.clients[DEFAULT_CLIENT]["is_playing"])
         mgr._clear_tuneshine.assert_not_called()
 
         # After delay completes, clear is executed
-        await asyncio.sleep(0.08)
+        await asyncio.sleep(0.3)
         mgr._clear_tuneshine.assert_called_once()
         self.assertIsNone(mgr.active_source)
         await mgr.close()
@@ -256,14 +345,14 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         # 1. Start playback with heartbeat enabled
         await mgr.on_external_playing(dummy_img, meta)
         self.assertEqual(mgr.active_source, "external")
-        self.assertTrue(mgr.external_state["is_playing"])
-        self.assertIsNotNone(mgr._heartbeat_watchdog_task)
+        self.assertTrue(mgr.clients[DEFAULT_CLIENT]["is_playing"])
+        self.assertIn(DEFAULT_CLIENT, mgr._watchdogs)
 
         # 2. Wait out the watchdog timeout
-        await asyncio.sleep(0.08)
+        await asyncio.sleep(0.3)
 
         # 3. Watchdog should have triggered clear
-        self.assertFalse(mgr.external_state["is_playing"])
+        self.assertFalse(mgr.clients[DEFAULT_CLIENT]["is_playing"])
         self.assertIsNone(mgr.active_source)
         self.assertEqual(cleared, [True])
         await mgr.close()
@@ -285,11 +374,11 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         # Send heartbeats every 0.03s (before 0.06s timeout)
         for _ in range(3):
             await asyncio.sleep(0.03)
-            refreshed = await mgr.on_heartbeat("windows")
+            refreshed = await mgr.on_heartbeat()
             self.assertTrue(refreshed)
 
         # Still playing
-        self.assertTrue(mgr.external_state["is_playing"])
+        self.assertTrue(mgr.clients[DEFAULT_CLIENT]["is_playing"])
         self.assertEqual(mgr.active_source, "external")
         mgr._clear_tuneshine.assert_not_called()
         await mgr.close()
@@ -306,14 +395,14 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         meta = {"artistName": "Artist 1", "albumName": "Album 1", "serviceName": "Windows", "heartbeat": True}
 
         await mgr.on_external_playing(dummy_img, meta)
-        self.assertIsNotNone(mgr._heartbeat_watchdog_task)
+        self.assertIn(DEFAULT_CLIENT, mgr._watchdogs)
 
         # External stopped
         await mgr.on_external_stopped()
-        self.assertIsNone(mgr._heartbeat_watchdog_task)
+        self.assertNotIn(DEFAULT_CLIENT, mgr._watchdogs)
 
         # on_heartbeat should now return False when not playing
-        refreshed = await mgr.on_heartbeat("windows")
+        refreshed = await mgr.on_heartbeat()
         self.assertFalse(refreshed)
         await mgr.close()
 
@@ -330,11 +419,11 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
 
         await mgr.on_external_playing(dummy_img, meta)
         await mgr.on_spotify_playing("spot1", dummy_img, {"serviceName": "Spotify"})
-        self.assertTrue(await mgr.on_heartbeat("windows"))
+        self.assertTrue(await mgr.on_heartbeat())
 
         # Watchdog marks the silent client stopped without touching Spotify's display
-        await asyncio.sleep(0.08)
-        self.assertFalse(mgr.external_state["is_playing"])
+        await asyncio.sleep(0.3)
+        self.assertFalse(mgr.clients[DEFAULT_CLIENT]["is_playing"])
         self.assertEqual(mgr.active_source, "spotify")
         mgr._clear_tuneshine.assert_not_called()
 
@@ -374,17 +463,64 @@ class TestSpotifyClient(unittest.IsolatedAsyncioTestCase):
         mock_response.status_code = 429
         mock_response.headers = {"Retry-After": "15"}
 
-        with patch.object(client._http, "get", return_value=mock_response):
-            track = await client.get_currently_playing()
-            self.assertIsNone(track)
+        with patch.object(client._http, "get", new=AsyncMock(return_value=mock_response)):
+            with self.assertRaises(SpotifyPollError):
+                await client.get_currently_playing()
             self.assertTrue(client.is_rate_limited)
             self.assertGreater(client.rate_limit_remaining, 10.0)
 
-        # Subsequent call should return None immediately without network request
-        with patch.object(client._http, "get") as mock_get:
-            track = await client.get_currently_playing()
-            self.assertIsNone(track)
+        # Subsequent call should fail fast without a network request
+        with patch.object(client._http, "get", new=AsyncMock()) as mock_get:
+            with self.assertRaises(SpotifyPollError):
+                await client.get_currently_playing()
             mock_get.assert_not_called()
+
+    async def test_poll_errors_are_not_reported_as_stopped(self):
+        client = SpotifyClient("id", "secret", "token")
+        client._access_token = "valid_token"
+        client._token_expires_at = time.time() + 3600
+
+        for failure in (MagicMock(status_code=500), MagicMock(status_code=503), httpx.ConnectTimeout("timeout")):
+            mock_get = AsyncMock(side_effect=failure) if isinstance(failure, Exception) else AsyncMock(return_value=failure)
+            with patch.object(client._http, "get", new=mock_get):
+                with self.assertRaises(SpotifyPollError):
+                    await client.get_currently_playing()
+
+        # 204 (nothing playing) and a paused player are real stops
+        with patch.object(client._http, "get", new=AsyncMock(return_value=MagicMock(status_code=204))):
+            self.assertIsNone(await client.get_currently_playing())
+        paused = MagicMock(status_code=200)
+        paused.json.return_value = {"is_playing": False, "item": {"id": "x"}}
+        with patch.object(client._http, "get", new=AsyncMock(return_value=paused)):
+            self.assertIsNone(await client.get_currently_playing())
+        await client.close()
+
+
+class TestSpotifyPollingWorker(unittest.IsolatedAsyncioTestCase):
+    async def test_persistent_poll_failure_is_treated_as_stop(self):
+        import main
+
+        clock = [1000.0]
+        sleeps = []
+
+        async def fake_sleep(seconds):
+            sleeps.append(seconds)
+            clock[0] += 20.0
+            if len(sleeps) >= 6:
+                raise asyncio.CancelledError
+
+        stopped = AsyncMock()
+        with patch.object(main.settings, "spotify_enabled", True), \
+             patch.object(main.SpotifyClient, "is_configured", new=True), \
+             patch.object(main.spotify_client, "get_currently_playing", new=AsyncMock(side_effect=SpotifyPollError("down"))), \
+             patch.object(main.state_mgr, "on_spotify_stopped", new=stopped), \
+             patch.object(main.time, "time", side_effect=lambda: clock[0]), \
+             patch.object(main.asyncio, "sleep", new=fake_sleep):
+            with self.assertRaises(asyncio.CancelledError):
+                await main.spotify_polling_worker()
+
+        # Short failures keep state; once past SPOTIFY_FAILURE_STOP_AFTER it stops exactly once
+        stopped.assert_awaited_once()
 
 
 class TestFastAPIEndpoints(unittest.TestCase):

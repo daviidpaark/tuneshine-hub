@@ -64,6 +64,16 @@
       <Mask>false</Mask>
     </Variable>
     <Variable>
+      <Value>90.0</Value>
+      <Name>HEARTBEAT_TIMEOUT</Name>
+      <Mode/>
+      <Description>Seconds without a heartbeat before a Windows companion session is treated as stopped (0 disables)</Description>
+      <Type>Variable</Type>
+      <Display>advanced</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Variable>
+    <Variable>
       <Value>false</Value>
       <Name>SPOTIFY_ENABLED</Name>
       <Mode/>

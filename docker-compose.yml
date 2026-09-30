@@ -12,6 +12,8 @@ services:
       # IP address or hostname of your physical Tuneshine device
       - TUNESHINE_HOST=${TUNESHINE_HOST:-192.168.1.100}
       - PORT=${PORT:-8585}
+      - CLEAR_DELAY=${CLEAR_DELAY:-2.0}
+      - HEARTBEAT_TIMEOUT=${HEARTBEAT_TIMEOUT:-90.0}
 
       # Spotify Web API configuration (Optional)
       - SPOTIFY_ENABLED=${SPOTIFY_ENABLED:-false}
