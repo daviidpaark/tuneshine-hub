@@ -5,6 +5,13 @@ All notable changes to the `tuneshine-hub` central service will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-09-30
+
+### Changed
+- **Spotify Is the Fallback:** Spotify now shows only while no client source (Windows companion, Navidrome, Plex) is playing, instead of taking the display on every Spotify track change. Playing Spotify desktop on a PC with the Windows companion previously uploaded each song twice, once from the companion and once from the Spotify poller, because the two artwork sources never hash the same. Arbitration uses source priority only and never compares track, album, or artist names.
+
+---
+
 ## [0.2.5] - 2026-09-30
 
 ### Added

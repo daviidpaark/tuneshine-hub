@@ -126,7 +126,7 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.mgr.close()
 
-    async def test_latest_event_arbitration(self):
+    async def test_external_priority_over_spotify(self):
         img = Image.new("RGB", (50, 50), color=(255, 0, 0))
         buf = io.BytesIO()
         img.save(buf, format="PNG")
@@ -139,12 +139,13 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.mgr.active_source, "external")
         self.assertTrue(self.mgr.external_state["is_playing"])
 
-        # 2. Spotify starts playing -> Latest event wins
+        # 2. Spotify starts playing -> held as fallback, no upload
         await self.mgr.on_spotify_playing("spot1", dummy_img, meta2)
-        self.assertEqual(self.mgr.active_source, "spotify")
+        self.assertEqual(self.mgr.active_source, "external")
         self.assertTrue(self.mgr.spotify_state["is_playing"])
+        self.mgr._push_to_tuneshine.assert_awaited_once()
 
-        # 3. Spotify stops -> Automatically reverts to active Navidrome
+        # 3. Spotify stops -> Navidrome keeps the display
         await self.mgr.on_spotify_stopped()
         self.assertEqual(self.mgr.active_source, "external")
         self.assertTrue(self.mgr.external_state["is_playing"])
@@ -154,6 +155,27 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.mgr.active_source)
         self.assertFalse(self.mgr.external_state["is_playing"])
         self.mgr._clear_tuneshine.assert_called()
+
+    async def test_spotify_fallback_and_external_takeover(self):
+        img = Image.new("RGB", (50, 50), color=(0, 0, 255))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        dummy_img = buf.getvalue()
+        spotify_meta = {"trackName": "Phone Song", "serviceName": "Spotify"}
+
+        # Spotify alone owns the display
+        await self.mgr.on_spotify_playing("spot1", dummy_img, spotify_meta)
+        self.assertEqual(self.mgr.active_source, "spotify")
+
+        # An external client starting takes over
+        await self.mgr.on_external_playing(dummy_img, {"trackName": "PC Song", "serviceName": "Windows"})
+        self.assertEqual(self.mgr.active_source, "external")
+
+        # External stopping falls back to Spotify's track
+        await self.mgr.on_external_stopped()
+        self.assertEqual(self.mgr.active_source, "spotify")
+        self.assertEqual(self.mgr._push_to_tuneshine.await_args.args[1], spotify_meta)
+        self.mgr._clear_tuneshine.assert_not_called()
 
     async def test_debounced_clear_cancellation(self):
         # Test that rapid DELETE -> POST cancels the pending clear and avoids blank screen
@@ -335,8 +357,10 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         await self.mgr.on_spotify_playing("spot1", dummy_img, {"serviceName": "Spotify"})
         self.assertEqual(self.mgr.active_source, "external")
 
+        # A new Spotify track is still only held as fallback while the external client plays
         await self.mgr.on_spotify_playing("spot2", dummy_img, {"serviceName": "Spotify"})
-        self.assertEqual(self.mgr.active_source, "spotify")
+        self.assertEqual(self.mgr.active_source, "external")
+        self.assertEqual(self.mgr.spotify_state["track_id"], "spot2")
 
 
 class TestSpotifyClient(unittest.IsolatedAsyncioTestCase):

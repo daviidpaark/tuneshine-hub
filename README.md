@@ -8,7 +8,7 @@
 
 A smart proxy controller and media aggregator for [Tuneshine](https://www.tuneshine.rocks/) LED displays.
 
-Acts as a central hub on your local network: it automatically manages **Spotify** background playback polling, receives live playback from **Navidrome** (via the [Navidrome Tuneshine Plugin](https://github.com/daviidpaark/tuneshine-navidrome)), **Windows** (via [Tuneshine Windows](https://github.com/daviidpaark/tuneshine-windows)), and **Plex / Plexamp** (via native webhooks), handles automatic **Latest-Event-Wins** priority arbitration, and forwards 64×64 lossless WebP artwork to your physical Tuneshine device.
+Acts as a central hub on your local network: it automatically manages **Spotify** background playback polling, receives live playback from **Navidrome** (via the [Navidrome Tuneshine Plugin](https://github.com/daviidpaark/tuneshine-navidrome)), **Windows** (via [Tuneshine Windows](https://github.com/daviidpaark/tuneshine-windows)), and **Plex / Plexamp** (via native webhooks), handles automatic priority arbitration with **Spotify as the fallback**, and forwards 64×64 lossless WebP artwork to your physical Tuneshine device.
 
 ---
 
@@ -23,8 +23,9 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
 ## Features
 
 - **Drop-in Hardware API:** Exposes `POST /image` and `DELETE /image` matching the real Tuneshine hardware HTTP API.
-- **Latest-Event-Wins Priority Arbitration:**
-  - Whichever music source (Navidrome, Plexamp, Tuneshine Windows Desktop Companion, or Spotify) starts or changes tracks most recently claims the display.
+- **Priority Arbitration with Spotify Fallback:**
+  - Among client sources (Navidrome, Plexamp, Tuneshine Windows Desktop Companion), whichever starts or changes tracks most recently claims the display.
+  - Spotify is the fallback: it shows only while no client source is playing, so Spotify desktop on a PC running the Windows companion is uploaded once, not twice.
   - When one service pauses or stops, the hub seamlessly falls back to the other active music stream before clearing to idle.
 - **Standalone 24/7 Spotify Engine:** Polls Spotify Web API asynchronously in the background with automatic token refreshing, rate-limit backoff, and CDN image downscaling.
 - **Plex & Plexamp Webhook Support:** Instant, event-driven track display via Plex Media Server webhooks with multi-criteria user, library, and player filtering.
@@ -44,7 +45,7 @@ Acts as a central hub on your local network: it automatically manages **Spotify*
              ▼                               ▼
  ┌─────────────────────────────────────────────────────────────┐
  │                   tuneshine-hub (Docker)                    │
- │  - Latest-event wins arbitration                            │  Upload 64x64 WebP  ┌─────────────────┐
+ │  - Priority arbitration, Spotify as fallback                │  Upload 64x64 WebP  ┌─────────────────┐
  │  - Spotify token management & rate limit backoff            │ ──────────────────► │ Tuneshine (LAN) │
  │  - Image downscaling to 64x64 WebP (Pillow)                 │                     └─────────────────┘
  │  - Drop-in API (POST /image, DELETE /image)                 │

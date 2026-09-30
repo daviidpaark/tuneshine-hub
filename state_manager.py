@@ -174,7 +174,12 @@ class HubStateManager:
                 "metadata": metadata,
             }
 
-            # Latest-event wins: Spotify event updates display
+            # Spotify is the fallback: an active external client keeps the display. This also stops
+            # Spotify desktop on a PC with the Windows companion from uploading every song twice.
+            if self.external_state["is_playing"]:
+                logger.debug("External client is playing; holding Spotify track as fallback")
+                return
+
             self.active_source = "spotify"
             await self._push_to_tuneshine(webp_data, metadata)
 

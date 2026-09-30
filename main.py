@@ -136,7 +136,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination service for Tuneshine ecosystem",
-    version="0.2.5",
+    version="0.2.6",
     lifespan=lifespan,
 )
 
