@@ -178,8 +178,8 @@ In the [Navidrome Tuneshine Plugin](https://github.com/daviidpaark/tuneshine-nav
 In [Tuneshine Windows](https://github.com/daviidpaark/tuneshine-windows):
 1. Open the **Dashboard** (double-click the system tray icon).
 2. Set **Operation Mode** to `Tuneshine Hub`.
-3. Enter your **Target Host** (e.g. `http://<hub-ip>:8585`).
-4. Ensure **Sync Enabled** is toggled on.
+3. Enter your **Target Address** (e.g. `http://<hub-ip>:8585`).
+4. Ensure **Sync Playback** is toggled on.
 
 ---
 
