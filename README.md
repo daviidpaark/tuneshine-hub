@@ -191,7 +191,7 @@ In [Tuneshine Windows](https://github.com/daviidpaark/tuneshine-windows):
 | `DELETE` | `/image` | Stops the calling client (same optional `?source=`); the display falls back to another playing client, then Spotify, or clears. |
 | `POST` | `/heartbeat` | Keeps a client session alive (same optional `?source=`; also aliased at `PUT /image`). Returns `ignored` when the hub has no playing session for that client, so the client should resend its track. |
 | `POST` | `/webhook/plex` | Plex Media Server webhook listener (also aliased at `/plex`). |
-| `GET` | `/health` | Health check returning the configured Tuneshine host. |
+| `GET` | `/health` | Health check returning the app version and configured Tuneshine host. |
 | `GET` | `/state` | Returns active playback source and playback status. |
 | `GET` | `/docs` | Interactive Swagger / OpenAPI documentation UI. |
 

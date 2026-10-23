@@ -159,7 +159,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination service for Tuneshine ecosystem",
-    version="0.2.7",
+    version="0.2.8",
     lifespan=lifespan,
 )
 
@@ -268,6 +268,7 @@ async def plex_webhook(
 async def health_check():
     return {
         "status": "ok",
+        "version": app.version,
         "tuneshine_host": settings.clean_tuneshine_host,
         "configured": state_mgr.is_configured,
     }

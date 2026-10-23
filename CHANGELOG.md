@@ -5,6 +5,13 @@ All notable changes to the `tuneshine-hub` central service will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8] - 2026-10-22
+
+### Added
+- `GET /health` now reports the running app `version`, so dashboards can compare it against the latest release.
+
+---
+
 ## [0.2.7] - 2026-09-30
 
 ### Fixed
