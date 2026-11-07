@@ -860,6 +860,41 @@ class TestPlexWebhook(unittest.TestCase):
             self.assertEqual(resp.json()["metadata"]["artistName"], "Remote Artist")
 
 
+class TestUntrustedInput(unittest.IsolatedAsyncioTestCase):
+    async def test_remote_artwork_only_requests_artwork_paths(self):
+        from plex import PlexWebhookHandler
+        from config import Settings
+
+        handler = PlexWebhookHandler(Settings(plex_url="http://plex.test:32400", plex_token="token"))
+        try:
+            handler._http.get = AsyncMock(return_value=MagicMock(status_code=200, content=b"art"))
+            for path in ("/library/sections/all/refresh", "/library/metadata/1/thumb/2/../../../refresh", "@evil.test/x", "/library/metadata/1/thumb/2?x=1"):
+                self.assertIsNone(await handler.fetch_remote_artwork(path))
+            handler._http.get.assert_not_called()
+
+            self.assertEqual(await handler.fetch_remote_artwork("/library/metadata/12/thumb/1699999999"), b"art")
+            handler._http.get.assert_called_once_with(
+                "http://plex.test:32400/library/metadata/12/thumb/1699999999", headers={"X-Plex-Token": "token"}
+            )
+        finally:
+            await handler.close()
+
+    def test_oversized_upload_is_rejected(self):
+        from main import MAX_UPLOAD_BYTES
+
+        client = TestClient(app)
+        resp = client.post("/image", files={"image": ("big.jpg", b"\0" * (MAX_UPLOAD_BYTES + 1), "image/jpeg")})
+        self.assertEqual(resp.status_code, 413)
+
+    def test_huge_dimensions_are_rejected_before_decoding(self):
+        from image_utils import process_image_to_webp
+
+        buf = io.BytesIO()
+        Image.new("1", (8000, 8000)).save(buf, format="PNG")
+        with self.assertRaises(ValueError):
+            process_image_to_webp(buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -110,7 +110,7 @@ class HubStateManager:
         """Called when an external client (Windows companion, Navidrome, Plex) starts playing a track."""
         async with self._lock:
             try:
-                webp_data = process_image_to_webp(raw_image_data)
+                webp_data = await asyncio.to_thread(process_image_to_webp, raw_image_data)
             except Exception as e:
                 # Leave any pending clear of the previous owner in place
                 logger.error(f"Failed to convert external image to WebP: {e}")
@@ -201,7 +201,7 @@ class HubStateManager:
                 return
 
             try:
-                webp_data = process_image_to_webp(raw_image_data)
+                webp_data = await asyncio.to_thread(process_image_to_webp, raw_image_data)
             except Exception as e:
                 logger.error(f"Failed to convert Spotify artwork to WebP: {e}")
                 return

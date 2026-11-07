@@ -1,11 +1,15 @@
 import json
 import logging
+import re
 from typing import Optional, Tuple, Dict, Any, List
 import httpx
 
 from config import Settings
 
 logger = logging.getLogger("tuneshine-hub.plex")
+
+# The token is only sent with artwork paths, so a webhook caller cannot point it at other Plex endpoints
+THUMB_PATH = re.compile(r"/library/metadata/\d+/(?:thumb|art)/\d+")
 
 
 class PlexWebhookHandler:
@@ -108,8 +112,10 @@ class PlexWebhookHandler:
         if not thumb_path or not self.server_url:
             return None
 
-        clean_path = thumb_path if thumb_path.startswith("/") else f"/{thumb_path}"
-        url = f"{self.server_url}{clean_path}"
+        if not THUMB_PATH.fullmatch(thumb_path):
+            logger.warning(f"Ignoring unexpected Plex artwork path: {thumb_path!r}")
+            return None
+        url = f"{self.server_url}{thumb_path}"
 
         headers = {}
         if self.token:

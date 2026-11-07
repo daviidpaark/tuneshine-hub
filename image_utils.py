@@ -3,6 +3,7 @@ import hashlib
 from PIL import Image, ImageOps
 
 TUNESHINE_SIZE = (64, 64)
+MAX_IMAGE_PIXELS = 40_000_000
 
 
 def process_image_to_webp(image_data: bytes) -> bytes:
@@ -11,6 +12,8 @@ def process_image_to_webp(image_data: bytes) -> bytes:
     using bilinear filtering, and encodes it as lossless WebP.
     """
     with Image.open(io.BytesIO(image_data)) as img:
+        if img.width * img.height > MAX_IMAGE_PIXELS:
+            raise ValueError(f"image is too large ({img.width}x{img.height})")
         # Convert to RGBA for consistent color handling
         if img.mode != "RGBA":
             converted = img.convert("RGBA")

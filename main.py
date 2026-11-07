@@ -22,6 +22,18 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+async def read_upload(upload: UploadFile) -> Optional[bytes]:
+    """Reads an uploaded file and closes it; None when it is larger than MAX_UPLOAD_BYTES."""
+    try:
+        data = await upload.read(MAX_UPLOAD_BYTES + 1)
+    finally:
+        await upload.close()
+    return None if len(data) > MAX_UPLOAD_BYTES else data
+
+
 class EndpointFilter(logging.Filter):
     """Filter out health check requests from access logs to prevent log spam."""
     def filter(self, record: logging.LogRecord) -> bool:
@@ -159,7 +171,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination service for Tuneshine ecosystem",
-    version="0.2.8",
+    version="0.2.9",
     lifespan=lifespan,
 )
 
@@ -175,11 +187,9 @@ async def post_image(
     Accepts multipart form-data with 'image' and 'metadata'.
     The optional 'source' query parameter (e.g. ?source=windows) gives each client its own playback slot.
     """
-    try:
-        raw_image = await image.read()
-    finally:
-        await image.close()
-
+    raw_image = await read_upload(image)
+    if raw_image is None:
+        return JSONResponse(status_code=413, content={"error": "Image is larger than 10 MB"})
     if not raw_image:
         return JSONResponse(status_code=400, content={"error": "Empty image payload"})
 
@@ -240,10 +250,7 @@ async def plex_webhook(
     if event in ("media.play", "media.resume", "media.scrobble"):
         raw_image = None
         if thumb:
-            try:
-                raw_image = await thumb.read()
-            finally:
-                await thumb.close()
+            raw_image = await read_upload(thumb)
 
         if not raw_image:
             thumb_path = (parsed.get("Metadata") or {}).get("thumb")

@@ -5,6 +5,15 @@ All notable changes to the `tuneshine-hub` central service will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2026-11-06
+
+### Security
+- The Plex webhook only fetches artwork from Plex for `/library/metadata/<id>/thumb/<n>` (or `/art/`) paths, so a webhook caller can no longer make the hub send `PLEX_TOKEN` to other Plex endpoints.
+- Uploads larger than 10 MB are rejected with `413`, and images over 40 megapixels are refused before decoding. Decoding now runs off the event loop.
+- Updated Pillow to 13.0.0, which fixes several image decoding vulnerabilities, and certifi to 2026.10.18.
+
+---
+
 ## [0.2.8] - 2026-10-22
 
 ### Added
