@@ -495,6 +495,36 @@ class TestSpotifyClient(unittest.IsolatedAsyncioTestCase):
                 await client.get_currently_playing()
             mock_get.assert_not_called()
 
+    async def test_rejected_refresh_token_is_logged_once_and_not_retried_every_poll(self):
+        client = SpotifyClient("id", "secret", "revoked")
+        rejected = MagicMock(status_code=400, text='{"error":"invalid_grant"}')
+
+        with patch.object(client._http, "post", new=AsyncMock(return_value=rejected)) as mock_post:
+            with self.assertLogs("tuneshine-hub.spotify", level="ERROR") as logs:
+                self.assertIsNone(await client.get_access_token())
+            self.assertEqual(len(logs.output), 1)
+            self.assertEqual(mock_post.await_count, 1)
+
+            # Polling again inside the cooldown neither asks Spotify nor logs again
+            for _ in range(3):
+                self.assertIsNone(await client.get_access_token())
+            self.assertEqual(mock_post.await_count, 1)
+            with self.assertRaises(SpotifyPollError):
+                await client.get_currently_playing()
+
+            # Once the cooldown is over it asks again, without repeating the error message
+            client._auth_retry_at = 0
+            self.assertIsNone(await client.get_access_token())
+            self.assertEqual(mock_post.await_count, 2)
+
+        accepted = MagicMock(status_code=200)
+        accepted.json.return_value = {"access_token": "new", "expires_in": 3600}
+        client._auth_retry_at = 0
+        with patch.object(client._http, "post", new=AsyncMock(return_value=accepted)):
+            self.assertEqual(await client.get_access_token(), "new")
+        self.assertFalse(client._auth_failure_logged)
+        await client.close()
+
     async def test_poll_errors_are_not_reported_as_stopped(self):
         client = SpotifyClient("id", "secret", "token")
         client._access_token = "valid_token"
@@ -563,6 +593,27 @@ class TestFastAPIEndpoints(unittest.TestCase):
         self.assertIn("active_source", data)
         self.assertIn("external_playing", data)
         self.assertIn("spotify_playing", data)
+
+    def test_oversized_request_body_is_refused_before_it_is_parsed(self):
+        from main import MAX_REQUEST_BYTES
+
+        too_big = b"\0" * (MAX_REQUEST_BYTES + 1)
+
+        # Declared length is checked immediately
+        resp = self.client.post("/image", files={"image": ("cover.jpg", too_big, "image/jpeg")})
+        self.assertEqual(resp.status_code, 413)
+
+        # A body streamed without a length is cut off while it arrives
+        def chunks():
+            for start in range(0, len(too_big), 1024 * 1024):
+                yield too_big[start:start + 1024 * 1024]
+
+        resp = self.client.post(
+            "/image",
+            content=chunks(),
+            headers={"Content-Type": "multipart/form-data; boundary=x"},
+        )
+        self.assertEqual(resp.status_code, 413)
 
     def test_post_image_accepts_metadata_that_is_not_an_object(self):
         buf = io.BytesIO()

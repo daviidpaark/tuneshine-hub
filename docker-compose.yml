@@ -9,14 +9,12 @@ services:
     ports:
       - "${PORT:-8585}:8585"
     environment:
-      # IP address or hostname of your physical Tuneshine device
       - TUNESHINE_HOST=${TUNESHINE_HOST:-192.168.1.100}
       - PORT=${PORT:-8585}
       - CLEAR_DELAY=${CLEAR_DELAY:-2.0}
       - HEARTBEAT_TIMEOUT=${HEARTBEAT_TIMEOUT:-90.0}
       - CLIENT_IDLE_TIMEOUT=${CLIENT_IDLE_TIMEOUT:-3600.0}
 
-      # Spotify Web API configuration (Optional)
       - SPOTIFY_ENABLED=${SPOTIFY_ENABLED:-false}
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
       - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
@@ -26,7 +24,6 @@ services:
       - SPOTIFY_IDLE_DELAY=${SPOTIFY_IDLE_DELAY:-30.0}
       - SPOTIFY_SERVICENAME=${SPOTIFY_SERVICENAME:-Spotify}
 
-      # Plex Webhook configuration (Optional)
       - PLEX_ENABLED=${PLEX_ENABLED:-true}
       - PLEX_ALLOWED_USERS=${PLEX_ALLOWED_USERS:-}
       - PLEX_ALLOWED_LIBRARIES=${PLEX_ALLOWED_LIBRARIES:-}

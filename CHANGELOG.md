@@ -5,6 +5,16 @@ All notable changes to the `tuneshine-hub` central service will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.11] - 2026-11-09
+
+### Fixed
+- Request bodies larger than 12 MB are refused with `413` while they arrive, instead of after the whole upload has been read into memory. The 10 MB limit per image still applies.
+- A Spotify refresh token that Spotify rejects now logs one error and is retried every five minutes, instead of a warning and a token request on every poll.
+
+### Changed
+- Manual rebuilds in the Docker publish workflow produce the same tags as a tag push (`X.Y.Z`, `X.Y` and the tagged commit's `sha-` tag), and `latest` only moves to the newest release tag.
+- Updated anyio to 4.16.0, httptools to 0.9.0, idna to 3.20, python-multipart to 0.0.33, and pydantic to 2.14.3 with its matching pydantic-core 2.50.4. Dependabot now groups the pydantic packages, which have to move together.
+
 ## [0.2.10] - 2026-11-09
 
 ### Fixed
@@ -103,7 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Plex Media Server Webhook Integration:** Added `POST /webhook/plex` (and alias `POST /plex`) for instant, event-driven track display for Plexamp and Plex clients without polling.
 - **Multi-Criteria Filtering:**
   - **Music-Only:** Automatically ignores movies, TV episodes, trailers, clips, and podcasts (`Metadata.type == "track"`).
-  - **User Filtering:** `PLEX_ALLOWED_USERS` permits syncing only for specified Plex usernames/IDs (e.g. `david,admin`).
+  - **User Filtering:** `PLEX_ALLOWED_USERS` permits syncing only for specified Plex usernames/IDs (e.g. `user1,user2`).
   - **Library Filtering:** `PLEX_ALLOWED_LIBRARIES` restricts syncing to specific music library section names or IDs (e.g. `Music,Lossless`).
   - **Player Filtering:** `PLEX_ALLOWED_PLAYERS` restricts syncing to dedicated clients (e.g. `Plexamp`).
 - **Remote Artwork Fallback:** Downloads high-res artwork from PMS using `PLEX_URL` (or `PLEX_SERVER_URL`) and `PLEX_TOKEN` when artwork is not attached directly in the webhook request.

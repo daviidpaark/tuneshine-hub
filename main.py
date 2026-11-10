@@ -5,7 +5,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, Form, Response, status
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Response, status
 from fastapi.responses import JSONResponse
 
 from config import settings
@@ -23,6 +23,39 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+# A whole request (image or Plex thumb plus form fields) may exceed one image by a little, but never by much
+MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 2 * 1024 * 1024
+
+
+class BodyLimitMiddleware:
+    """Refuses oversized request bodies up front or while they stream in, before form parsing buffers them."""
+
+    def __init__(self, app, max_bytes: int):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        declared = dict(scope["headers"]).get(b"content-length", b"")
+        if declared.isdigit() and int(declared) > self.max_bytes:
+            await JSONResponse(status_code=413, content={"error": "Request body is too large"})(scope, receive, send)
+            return
+
+        received = 0
+
+        async def limited_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise HTTPException(status_code=413, detail="Request body is too large")
+            return message
+
+        await self.app(scope, limited_receive, send)
 
 
 async def read_upload(upload: UploadFile) -> Optional[bytes]:
@@ -172,9 +205,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination service for Tuneshine ecosystem",
-    version="0.2.10",
+    version="0.2.11",
     lifespan=lifespan,
 )
+app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_REQUEST_BYTES)
 
 
 @app.post("/image", summary="Upload artwork and metadata to display")

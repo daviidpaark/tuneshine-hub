@@ -7,6 +7,9 @@ import httpx
 
 logger = logging.getLogger("tuneshine-hub.spotify")
 
+# How long to wait before asking Spotify again after it rejects the refresh token
+AUTH_RETRY_SECONDS = 300
+
 
 class SpotifyPollError(Exception):
     """The currently-playing state could not be determined."""
@@ -35,6 +38,8 @@ class SpotifyClient:
         self._access_token: Optional[str] = None
         self._token_expires_at: float = 0
         self._rate_limited_until: float = 0
+        self._auth_retry_at: float = 0
+        self._auth_failure_logged = False
         self._http = httpx.AsyncClient(timeout=10.0)
 
     @property
@@ -56,7 +61,7 @@ class SpotifyClient:
         if not self.is_configured:
             return None
 
-        if self.is_rate_limited:
+        if self.is_rate_limited or time.time() < self._auth_retry_at:
             return None
 
         auth_str = f"{self.client_id}:{self.client_secret}"
@@ -80,7 +85,18 @@ class SpotifyClient:
                 return None
 
             if resp.status_code != 200:
-                logger.warning(f"Spotify token refresh failed ({resp.status_code}): {resp.text}")
+                if 400 <= resp.status_code < 500:
+                    # A rejected refresh token stays rejected, so stop asking until the cooldown ends
+                    self._auth_retry_at = time.time() + AUTH_RETRY_SECONDS
+                    if not self._auth_failure_logged:
+                        self._auth_failure_logged = True
+                        logger.error(
+                            f"Spotify rejected the refresh token ({resp.status_code}): {resp.text}. "
+                            f"Check SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET and SPOTIFY_REFRESH_TOKEN; "
+                            f"retrying every {AUTH_RETRY_SECONDS // 60} minutes"
+                        )
+                else:
+                    logger.warning(f"Spotify token refresh failed ({resp.status_code}): {resp.text}")
                 return None
 
             data = resp.json()
@@ -90,6 +106,9 @@ class SpotifyClient:
             if not token:
                 return None
 
+            if self._auth_failure_logged:
+                logger.info("Spotify accepted the refresh token again")
+            self._auth_failure_logged = False
             self._access_token = token
             # Cache with 60 second safety buffer
             self._token_expires_at = time.time() + max(0, expires_in - 60)
