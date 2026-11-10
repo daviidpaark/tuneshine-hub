@@ -48,6 +48,7 @@ state_mgr = HubStateManager(
     settings.clean_tuneshine_host,
     clear_delay=settings.clear_delay,
     heartbeat_timeout=settings.heartbeat_timeout,
+    idle_timeout=settings.client_idle_timeout,
 )
 spotify_client = SpotifyClient(
     client_id=settings.spotify_client_id,
@@ -171,7 +172,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination service for Tuneshine ecosystem",
-    version="0.2.9",
+    version="0.2.10",
     lifespan=lifespan,
 )
 
@@ -198,6 +199,8 @@ async def post_image(
         try:
             parsed_meta = json.loads(metadata)
         except Exception:
+            parsed_meta = {}
+        if not isinstance(parsed_meta, dict):
             parsed_meta = {}
 
     await state_mgr.on_external_playing(raw_image, parsed_meta, client=source or DEFAULT_CLIENT)

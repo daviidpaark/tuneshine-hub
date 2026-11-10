@@ -24,12 +24,20 @@ def _empty_state() -> Dict[str, Any]:
 
 
 class HubStateManager:
-    def __init__(self, tuneshine_host: str, clear_delay: float = 2.0, heartbeat_timeout: float = 90.0):
+    def __init__(
+        self,
+        tuneshine_host: str,
+        clear_delay: float = 2.0,
+        heartbeat_timeout: float = 90.0,
+        idle_timeout: float = 3600.0,
+    ):
         self.tuneshine_host = tuneshine_host.strip().removeprefix("http://").removeprefix("https://").rstrip("/")
         self._http = httpx.AsyncClient(timeout=15.0)
         self._lock = asyncio.Lock()
         self.clear_delay = clear_delay
         self.heartbeat_timeout = heartbeat_timeout
+        # Clients that send no heartbeats (Plex, Navidrome) are stopped after this long without a new track
+        self.idle_timeout = idle_timeout
 
         self.active_source: Optional[str] = None  # "external", "spotify", or None
         self.active_client: Optional[str] = None  # external client that owns the display
@@ -77,19 +85,20 @@ class HubStateManager:
         if task and not task.done() and task is not asyncio.current_task():
             task.cancel()
 
-    def _arm_heartbeat_watchdog(self, client: str):
+    def _arm_heartbeat_watchdog(self, client: str, heartbeat: bool = True):
         self._cancel_heartbeat_watchdog(client)
-        if self.heartbeat_timeout > 0:
-            self._watchdogs[client] = asyncio.create_task(self._delayed_heartbeat_timeout(client))
+        timeout = self.heartbeat_timeout if heartbeat else self.idle_timeout
+        if timeout > 0:
+            self._watchdogs[client] = asyncio.create_task(self._delayed_heartbeat_timeout(client, timeout))
 
-    async def _delayed_heartbeat_timeout(self, client: str):
+    async def _delayed_heartbeat_timeout(self, client: str, timeout: float):
         try:
-            await asyncio.sleep(self.heartbeat_timeout)
+            await asyncio.sleep(timeout)
             async with self._lock:
                 state = self.clients.get(client)
                 if state and state["is_playing"]:
                     logger.warning(
-                        f"Client '{client}' heartbeat timed out ({self.heartbeat_timeout}s without update); marking stopped"
+                        f"Client '{client}' timed out ({timeout}s without update); marking stopped"
                     )
                     state["is_playing"] = False
                     await self._resolve_external_stop(client)
@@ -117,12 +126,9 @@ class HubStateManager:
                 return
 
             self._cancel_pending_clear()
-            if metadata.get("heartbeat"):
-                self._arm_heartbeat_watchdog(client)
-            else:
-                self._cancel_heartbeat_watchdog(client)
+            self._arm_heartbeat_watchdog(client, heartbeat=bool(metadata.get("heartbeat")))
 
-            item_id = metadata.get("itemId") or metadata.get("artistName", "") + metadata.get("albumName", "")
+            item_id = metadata.get("itemId") or f"{metadata.get('artistName') or ''}{metadata.get('albumName') or ''}"
 
             # Re-insert so dict order tracks the most recent start, used for fallback
             self.clients.pop(client, None)

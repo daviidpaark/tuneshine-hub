@@ -406,6 +406,26 @@ class TestStateManager(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(refreshed)
         await mgr.close()
 
+    async def test_client_without_heartbeat_times_out(self):
+        # A client that sends no heartbeats (Plex, Navidrome) and never reports a stop is released after idle_timeout
+        mgr = HubStateManager("192.168.1.100", clear_delay=0.0, heartbeat_timeout=30.0, idle_timeout=0.05)
+        mgr._push_to_tuneshine = AsyncMock()
+        mgr._clear_tuneshine = AsyncMock()
+
+        buf = io.BytesIO()
+        Image.new("RGB", (50, 50), color=(100, 100, 100)).save(buf, format="PNG")
+        meta = {"artistName": None, "albumName": "Album 1", "serviceName": "Plexamp"}
+
+        await mgr.on_external_playing(buf.getvalue(), meta, client="plex")
+        self.assertTrue(mgr.clients["plex"]["is_playing"])
+        self.assertEqual(mgr.clients["plex"]["track_id"], "Album 1")
+
+        await asyncio.sleep(0.3)
+        self.assertFalse(mgr.clients["plex"]["is_playing"])
+        self.assertIsNone(mgr.active_source)
+        mgr._clear_tuneshine.assert_called_once()
+        await mgr.close()
+
     async def test_heartbeat_timeout_while_spotify_active(self):
         mgr = HubStateManager("192.168.1.100", clear_delay=0.0, heartbeat_timeout=0.05)
         mgr._push_to_tuneshine = AsyncMock()
@@ -543,6 +563,18 @@ class TestFastAPIEndpoints(unittest.TestCase):
         self.assertIn("active_source", data)
         self.assertIn("external_playing", data)
         self.assertIn("spotify_playing", data)
+
+    def test_post_image_accepts_metadata_that_is_not_an_object(self):
+        buf = io.BytesIO()
+        Image.new("RGB", (50, 50), color=(255, 255, 0)).save(buf, format="JPEG")
+        for metadata in ("[]", "5", '"text"', '{"artistName": null, "albumName": null}'):
+            resp = self.client.post(
+                "/image",
+                files={"image": ("cover.jpg", buf.getvalue(), "image/jpeg")},
+                data={"metadata": metadata},
+            )
+            self.assertEqual(resp.status_code, 200, metadata)
+        self.client.delete("/image")
 
     def test_post_image_and_delete_endpoints(self):
         img = Image.new("RGB", (50, 50), color=(255, 255, 0))

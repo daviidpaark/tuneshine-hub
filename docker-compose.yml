@@ -14,6 +14,7 @@ services:
       - PORT=${PORT:-8585}
       - CLEAR_DELAY=${CLEAR_DELAY:-2.0}
       - HEARTBEAT_TIMEOUT=${HEARTBEAT_TIMEOUT:-90.0}
+      - CLIENT_IDLE_TIMEOUT=${CLIENT_IDLE_TIMEOUT:-3600.0}
 
       # Spotify Web API configuration (Optional)
       - SPOTIFY_ENABLED=${SPOTIFY_ENABLED:-false}

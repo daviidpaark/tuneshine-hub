@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     # Debounce / Clearing / Watchdog Configuration
     clear_delay: float = 2.0
     heartbeat_timeout: float = 90.0
+    client_idle_timeout: float = 3600.0
 
     # Spotify Configuration
     spotify_enabled: bool = False

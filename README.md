@@ -128,6 +128,7 @@ Tuneshine Hub includes an Unraid Community Applications XML template ([`tuneshin
 | `PORT` | No | `8585` | Port for the Hub HTTP server |
 | `CLEAR_DELAY` | No | `2.0` | Debounce delay in seconds before clearing display or switching sources (prevents screen flicker during seeks & track transitions) |
 | `HEARTBEAT_TIMEOUT` | No | `90.0` | Seconds without a heartbeat before a Windows companion session is treated as stopped. `0` disables the watchdog |
+| `CLIENT_IDLE_TIMEOUT` | No | `3600.0` | Seconds without a new track before a Plex or Navidrome session is treated as stopped, in case its stop event never arrives. `0` disables it |
 | `SPOTIFY_ENABLED` | No | `false` | Enable Spotify Web API polling |
 | `SPOTIFY_CLIENT_ID` | Conditional | — | Spotify Developer Client ID (required if Spotify is enabled) |
 | `SPOTIFY_CLIENT_SECRET` | Conditional | — | Spotify Developer Client Secret (required if Spotify is enabled) |

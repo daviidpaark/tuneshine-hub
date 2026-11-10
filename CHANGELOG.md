@@ -5,6 +5,12 @@ All notable changes to the `tuneshine-hub` central service will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.10] - 2026-11-09
+
+### Fixed
+- A Plex or Navidrome session whose stop event never arrives no longer holds the display forever and keeps Spotify off it. Clients that send no heartbeats are treated as stopped after `CLIENT_IDLE_TIMEOUT` seconds (default one hour) without a new track.
+- `POST /image` no longer answers `500` when `metadata` is valid JSON but not an object, or when `artistName` or `albumName` is `null`.
+
 ## [0.2.9] - 2026-11-06
 
 ### Security
