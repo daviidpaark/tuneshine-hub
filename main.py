@@ -205,7 +205,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tuneshine Hub",
     description="Central coordination service for Tuneshine ecosystem",
-    version="0.2.11",
+    version="0.2.12",
     lifespan=lifespan,
 )
 app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_REQUEST_BYTES)

@@ -70,6 +70,11 @@ class TestTuneshinePush(unittest.IsolatedAsyncioTestCase):
         responses = [MagicMock(status_code=code, text="") for code in status_codes]
         return patch.object(self.mgr._http, "post", new=AsyncMock(side_effect=responses))
 
+    def _mock_device_source(self, image_source="local"):
+        resp = MagicMock(status_code=200, text="")
+        resp.json.return_value = {"imageSource": image_source}
+        return patch.object(self.mgr._http, "get", new=AsyncMock(return_value=resp))
+
     async def test_new_artwork_uploads_multipart_with_track_name(self):
         meta = {"trackName": "Song 1", "artistName": "Artist", "albumName": "Album", "heartbeat": True}
         with self._mock_post(200) as post:
@@ -79,10 +84,10 @@ class TestTuneshinePush(unittest.IsolatedAsyncioTestCase):
         files = post.await_args.kwargs["files"]
         self.assertEqual(files["image"], ("cover.webp", self.webp, "image/webp"))
         sent = json.loads(files["metadata"][1])
-        self.assertEqual(sent, {"trackName": "Song 1", "artistName": "Artist", "albumName": "Album"})
+        self.assertEqual(sent, {"trackName": "Song 1", "artistName": "Artist", "albumName": "Album", "showDuringSleep": False})
 
     async def test_same_artwork_new_track_sends_metadata_only(self):
-        with self._mock_post(200, 200) as post:
+        with self._mock_post(200, 200) as post, self._mock_device_source("local"):
             await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 1", "albumName": "Album"})
             await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 2", "albumName": "Album"})
 
@@ -101,13 +106,29 @@ class TestTuneshinePush(unittest.IsolatedAsyncioTestCase):
         post.assert_awaited_once()
 
     async def test_metadata_only_409_falls_back_to_full_upload(self):
-        with self._mock_post(200, 409, 200) as post:
+        with self._mock_post(200, 409, 200) as post, self._mock_device_source("local"):
             await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 1"})
             await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 2"})
 
         self.assertEqual(post.await_count, 3)
         self.assertIn("files", post.await_args_list[2].kwargs)
         self.assertEqual(self.mgr.last_pushed_metadata, {"trackName": "Song 2"})
+
+    async def test_same_artwork_reuploads_when_device_shows_cloud_image(self):
+        with self._mock_post(200, 200) as post, self._mock_device_source("remote"):
+            await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 1"})
+            await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 2"})
+
+        self.assertEqual(post.await_count, 2)
+        files = post.await_args_list[1].kwargs["files"]
+        self.assertEqual(json.loads(files["metadata"][1]), {"trackName": "Song 2", "showDuringSleep": False})
+
+    async def test_same_artwork_reuploads_when_device_state_is_unreadable(self):
+        with self._mock_post(200, 200) as post, patch.object(self.mgr._http, "get", new=AsyncMock(side_effect=httpx.ConnectError("down"))):
+            await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 1"})
+            await self.mgr._push_to_tuneshine(self.webp, {"trackName": "Song 2"})
+
+        self.assertIn("files", post.await_args_list[1].kwargs)
 
     async def test_clear_resets_metadata_cache(self):
         with self._mock_post(200):

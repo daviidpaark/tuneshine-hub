@@ -282,8 +282,12 @@ class HubStateManager:
         img_hash = compute_image_hash(webp_data)
         if not force and self.last_uploaded_hash == img_hash:
             if meta != self.last_pushed_metadata:
-                # Same artwork (e.g. next track on the same album): update metadata without re-uploading
-                await self._push_metadata_only(webp_data, meta, img_hash)
+                # Same artwork (e.g. next track on the same album): update metadata without re-uploading,
+                # unless the device has switched to its cloud image, which a metadata-only update doesn't undo
+                if await self._device_shows_local_image():
+                    await self._push_metadata_only(webp_data, meta, img_hash)
+                else:
+                    await self._upload_image(webp_data, meta, img_hash)
             return
 
         await self._upload_image(webp_data, meta, img_hash)
@@ -293,11 +297,23 @@ class HubStateManager:
         track = f"{meta.get('trackName')} - " if meta.get("trackName") else ""
         return f"[{meta.get('serviceName', 'Media')}]: {track}{meta.get('artistName')} - {meta.get('albumName')}"
 
+    async def _device_shows_local_image(self) -> bool:
+        url = f"http://{self.tuneshine_host}/state"
+        try:
+            resp = await self._http.get(url)
+            if 200 <= resp.status_code < 300:
+                return resp.json().get("imageSource") == "local"
+            logger.warning(f"GET /state from Tuneshine returned {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error reading Tuneshine state ({url}): {e}")
+        return False
+
     async def _upload_image(self, webp_data: bytes, meta: Dict[str, Any], img_hash: str):
         url = f"http://{self.tuneshine_host}/image"
         files = {
             "image": ("cover.webp", webp_data, "image/webp"),
-            "metadata": (None, json.dumps(meta), "application/json"),
+            # Hold artwork during the device's scheduled sleep instead of lighting the display
+            "metadata": (None, json.dumps({**meta, "showDuringSleep": False}), "application/json"),
         }
 
         try:

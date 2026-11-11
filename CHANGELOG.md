@@ -5,6 +5,12 @@ All notable changes to the `tuneshine-hub` central service will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.12] - 2026-11-11
+
+### Fixed
+- When the next track uses the same artwork, the hub checks the device's `GET /state` first and re-uploads the image if the device has switched to its cloud image (`imageSource` is not `local`). A metadata-only update didn't switch it back, so the artwork stayed on screen at the idle brightness until the album changed.
+- Artwork uploads ask the device to hold the image during its scheduled sleep (`showDuringSleep: false`) and show it when sleep ends. The device default lit the display with artwork during sleep.
+
 ## [0.2.11] - 2026-11-09
 
 ### Fixed
